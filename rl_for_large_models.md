@@ -1,0 +1,1042 @@
+# Reinforcement Learning for Large Models: A Complete Learning Path
+
+> Mathematical formulations, algorithmic development, and industry adoption status.  
+> Covers text RL (PPO → GRPO → GSPO) then multimodal RL (DDPO → Flow-GRPO → MixGRPO).
+
+---
+
+## Table of Contents
+
+**Part I: Reinforcement Learning Foundations**
+1. [The RL Problem: Setup and Notation](#1-the-rl-problem-setup-and-notation)
+2. [Value-Based vs Policy-Based Methods](#2-value-based-vs-policy-based-methods)
+3. [Policy Gradient and REINFORCE](#3-policy-gradient-and-reinforce)
+4. [Actor-Critic: The Bridge](#4-actor-critic-the-bridge)
+
+**Part II: Modern Policy Optimization for LLMs**
+5. [TRPO: Why Trust Regions Matter](#5-trpo-why-trust-regions-matter)
+6. [PPO: Proximal Policy Optimization](#6-ppo-proximal-policy-optimization)
+7. [GRPO: Group Relative Policy Optimization](#7-grpo-group-relative-policy-optimization)
+8. [GSPO: Group Sequence Policy Optimization](#8-gspo-group-sequence-policy-optimization)
+8.5. [DAPO: Decoupled Clip and Dynamic Sampling](#85-dapo-decoupled-clip-and-dynamic-sampling-policy-optimization)
+
+**Part III: Multimodal Reinforcement Learning**
+9. [Why Text RL Cannot Be Directly Applied](#9-why-text-rl-cannot-be-directly-applied)
+10. [DDPO: Establishing the Diffusion MDP](#10-ddpo-establishing-the-diffusion-mdp)
+11. [Flow-GRPO: Solving the Stochasticity Problem](#11-flow-grpo-solving-the-stochasticity-problem)
+12. [MixGRPO: Production-Scale Efficiency](#12-mixgrpo-production-scale-efficiency)
+13. [DiffusionNFT: The Forward-Process Alternative](#13-diffusionnft-the-forward-process-alternative)
+14. [Flow-DPO: Offline Preference Optimization](#14-flow-dpo-offline-preference-optimization)
+
+**Part IV: Industry Landscape**
+15. [Industry Implementation Summary](#15-industry-implementation-summary)
+
+**Part V: Reward Models**
+16. [Reward Model Design and Scaling](#16-reward-model-design-and-scaling)
+
+**Part VI: Training Infrastructure**
+17. [Training Infrastructure and Memory Requirements](#17-training-infrastructure-and-memory-requirements)
+
+---
+
+# Part I: Reinforcement Learning Foundations
+
+## 1. The RL Problem: Setup and Notation
+
+Reinforcement learning is the study of how an **agent** learns to make **decisions** to maximize **cumulative reward** through interaction with an **environment**.
+
+### The Markov Decision Process (MDP)
+
+An MDP is defined by the tuple $(S, A, P, R, \gamma)$:
+
+| Symbol | Meaning |
+|--------|---------|
+| $S$ | State space |
+| $A$ | Action space |
+| $P(s' \mid s, a)$ | Transition probability (environment dynamics) |
+| $R(s, a)$ | Reward function |
+| $\gamma \in [0,1)$ | Discount factor |
+| $\pi(a \mid s)$ | Policy — the agent's decision rule |
+
+The **trajectory** $\tau = (s_0, a_0, r_0, s_1, a_1, r_1, \ldots)$ describes a sequence of states, actions, and rewards.
+
+The **discounted return** from time $t$ is:
+
+$$G_t = \sum_{k=0}^{\infty} \gamma^k r_{t+k}$$
+
+### Objective
+
+The agent seeks to maximize the **expected return**:
+
+$$J(\pi) = \mathbb{E}_{\tau \sim \pi}[G_0] = \mathbb{E}_{\tau \sim \pi}\!\left[\sum_{t=0}^{\infty} \gamma^t r_t\right]$$
+
+### Value Functions
+
+The **state-value function** measures how good it is to be in state $s$ under policy $\pi$:
+
+$$V^\pi(s) = \mathbb{E}_{\tau \sim \pi}[G_t \mid s_t = s]$$
+
+The **action-value function** measures how good a specific state-action pair is:
+
+$$Q^\pi(s, a) = \mathbb{E}_{\tau \sim \pi}[G_t \mid s_t = s,\; a_t = a]$$
+
+The **advantage function** measures how much better action $a$ is compared to the average:
+
+$$A^\pi(s, a) = Q^\pi(s, a) - V^\pi(s)$$
+
+The advantage is zero in expectation: $\mathbb{E}_{a \sim \pi}[A^\pi(s,a)] = 0$.
+
+---
+
+## 2. Value-Based vs Policy-Based Methods
+
+There are two fundamental approaches to RL. Understanding their trade-offs explains why large model training universally uses policy-based methods.
+
+### Value-Based Methods
+
+**Core idea:** Learn $Q^\pi(s, a)$, then derive the policy as $\pi(s) = \arg\max_a Q(s, a)$.
+
+**Representative algorithms:** Q-Learning, DQN, Rainbow.
+
+**Advantages:**
+- Sample efficient — can reuse off-policy data
+- Low variance (bootstrapped value estimates rather than high-variance Monte Carlo returns)
+- Stable training for small, discrete action spaces
+
+**Disadvantages:**
+- Require discrete, finite action spaces (or expensive approximations for continuous)
+- Cannot represent stochastic policies — always greedy
+- Do not scale to very large action spaces
+
+### Policy-Based Methods
+
+**Core idea:** Directly optimize $\pi_\theta(a \mid s)$ by gradient ascent on $J(\theta)$.
+
+**Representative algorithms:** REINFORCE, PPO, GRPO, GSPO.
+
+**Advantages:**
+- Handle continuous and very large discrete action spaces naturally
+- Can represent and optimize stochastic policies
+- Directly optimize the objective we care about
+- Scale to modern LLMs (the policy *is* the language model)
+
+**Disadvantages:**
+- High gradient variance — requires large batch sizes or variance reduction tricks
+- On-policy by default: data generated by the old policy becomes stale after each update
+
+### Why LLMs Use Policy-Based Methods
+
+In LLM RL (RLHF and beyond):
+- **State** = prompt + tokens generated so far
+- **Action** = next token (vocabulary $\approx$ 100K tokens)
+- **Reward** = scalar from a reward model after the full response
+
+Value-based methods cannot enumerate or store $Q(s, a)$ over $10^5$ actions × millions of possible states. Policy-based methods are the only practical choice — the language model $\pi_\theta$ *is* the policy.
+
+---
+
+## 3. Policy Gradient and REINFORCE
+
+### The Policy Gradient Theorem
+
+The gradient of the expected return with respect to policy parameters is:
+
+$$\nabla_\theta J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta}\!\left[\sum_t \nabla_\theta \log \pi_\theta(a_t \mid s_t) \cdot G_t\right]$$
+
+**Intuition:** Actions that led to high returns ($G_t > 0$) have their log-probability *increased*; actions leading to low returns have it *decreased*. The term $\nabla_\theta \log \pi_\theta(a_t \mid s_t)$ is the **score function** — it points in the direction to make action $a_t$ more (or less) probable.
+
+### Variance Reduction: The Baseline
+
+Since $G_t$ varies widely, the gradient estimate has high variance. Subtracting a **baseline** $b(s_t)$ (which does not depend on the action) reduces variance without introducing bias:
+
+$$\nabla_\theta J(\theta) = \mathbb{E}\!\left[\sum_t \nabla_\theta \log \pi_\theta(a_t \mid s_t) \cdot (G_t - b(s_t))\right]$$
+
+The optimal baseline is $b(s_t) = V^\pi(s_t)$, which yields the **advantage function** $A^\pi(s_t, a_t) = G_t - V^\pi(s_t)$.
+
+### REINFORCE Algorithm
+
+1. Sample trajectory $\tau \sim \pi_\theta$
+2. Compute returns $G_t$ for each step
+3. Update: $\theta \leftarrow \theta + \alpha \sum_t \nabla_\theta \log \pi_\theta(a_t \mid s_t) \cdot G_t$
+
+**Problems left unsolved:**
+- Very high gradient variance — requires many trajectories for a stable update
+- Inefficient: each trajectory is used once and discarded (purely on-policy)
+- No constraint on update step size — large steps can destroy the policy ("catastrophic forgetting")
+
+---
+
+## 4. Actor-Critic: The Bridge
+
+Actor-Critic addresses REINFORCE's variance problem by combining policy optimization (actor) with a learned value function (critic) that provides a low-variance baseline.
+
+- **Actor**: the policy $\pi_\theta(a \mid s)$ — updated via policy gradient
+- **Critic**: the value function $V_\phi(s)$ — learned via TD, serves as the baseline
+
+### Advantage Estimation with the Critic
+
+Instead of using full Monte Carlo returns $G_t$ (high variance), use the **TD error** as a one-step advantage estimate:
+
+$$\hat{A}_t = r_t + \gamma V_\phi(s_{t+1}) - V_\phi(s_t)$$
+
+This is the temporal difference (TD) error — a biased but lower-variance estimate of the advantage.
+
+### Generalized Advantage Estimation (GAE)
+
+GAE (Schulman et al., 2016) interpolates between one-step TD and full Monte Carlo via a $\lambda$-weighted average over $n$-step TD errors.
+
+Define the one-step TD residual:
+
+$$\delta_t = r_t + \gamma V_\phi(s_{t+1}) - V_\phi(s_t)$$
+
+The GAE advantage is:
+
+$$\hat{A}_t^{\text{GAE}(\gamma, \lambda)} = \sum_{l=0}^{\infty} (\gamma\lambda)^l\, \delta_{t+l}$$
+
+Special cases:
+- $\lambda = 0$: pure one-step TD, $\hat{A}_t = \delta_t$ (high bias, low variance)
+- $\lambda = 1$: full Monte Carlo, $\hat{A}_t = G_t - V_\phi(s_t)$ (low bias, high variance)
+- $\lambda \approx 0.95$: typical choice, balancing bias-variance trade-off
+
+GAE is used inside PPO to compute the advantage estimates $\hat{A}_t$ from which the actor is updated.
+
+**Problems left unsolved:**
+- Still requires a critic network $V_\phi$ of the same size as the policy (for LLMs: doubles memory)
+- Critic training is often unstable — value estimates for LLMs are difficult to calibrate
+- No formal constraint on update step size — large steps remain possible
+
+---
+
+# Part II: Modern Policy Optimization for LLMs
+
+## 5. TRPO: Why Trust Regions Matter
+
+*TRPO is not directly used in LLM training, but its theory motivates PPO's design.*
+
+### The Problem: Unconstrained Updates Collapse the Policy
+
+Standard policy gradient can make updates that are too large, collapsing a well-performing policy to a degenerate one. The central question is: **how large can an update step be while guaranteeing monotone improvement?**
+
+### TRPO's Answer: A KL Constraint
+
+Schulman et al. (2015) showed a formal lower bound: optimizing the Conservative Policy Iteration (CPI) surrogate
+
+$$L^{\text{CPI}}(\theta) = \mathbb{E}_t\!\left[\frac{\pi_\theta(a_t \mid s_t)}{\pi_{\theta_{\text{old}}}(a_t \mid s_t)}\,\hat{A}_t\right] = \mathbb{E}_t[r_t(\theta)\,\hat{A}_t]$$
+
+where $r_t(\theta) = \pi_\theta / \pi_{\theta_\text{old}}$ is the **importance ratio**, subject to the trust region constraint:
+
+$$\mathbb{E}_t\!\left[D_{\text{KL}}\!\left(\pi_{\theta_\text{old}}(\cdot \mid s_t) \,\|\, \pi_\theta(\cdot \mid s_t)\right)\right] \leq \delta$$
+
+guarantees $J(\pi_\theta) \geq J(\pi_{\theta_\text{old}})$ minus a bounded correction term.
+
+**Problem TRPO leaves unsolved:** Enforcing the KL constraint requires computing the Fisher information matrix — a second-order method that is computationally intractable for large neural networks.
+
+---
+
+## 6. PPO: Proximal Policy Optimization
+
+> **Industry status:** Standard algorithm for LLM RLHF from 2017 through 2023. Still used at OpenAI (InstructGPT, early GPT-4).  
+> **Key paper:** Schulman et al., 2017 (arXiv:1707.06347)
+
+### Problem Being Solved
+
+TRPO provides theoretical guarantees but is computationally intractable. PPO replaces the hard KL constraint with **clipping** — a simple first-order method that approximately enforces the same trust region.
+
+### The PPO-Clip Objective
+
+$$\boxed{L^{\text{CLIP}}(\theta) = \mathbb{E}_t\!\left[\min\!\left(\,r_t(\theta)\,\hat{A}_t,\;\;\text{clip}(r_t(\theta), 1{-}\varepsilon, 1{+}\varepsilon)\,\hat{A}_t\,\right)\right]}$$
+
+where $r_t(\theta) = \dfrac{\pi_\theta(a_t \mid s_t)}{\pi_{\theta_{\text{old}}}(a_t \mid s_t)}$ and $\varepsilon \approx 0.1$–$0.2$.
+
+**How clipping enforces the trust region:**
+
+| Situation | Clip activates when | Effect |
+|---|---|---|
+| $\hat{A}_t > 0$ (good action — increase probability) | $r_t > 1 + \varepsilon$ | Gradient set to zero — stops over-aggressive probability increase |
+| $\hat{A}_t < 0$ (bad action — decrease probability) | $r_t < 1 - \varepsilon$ | Gradient set to zero — stops over-aggressive probability decrease |
+
+The `min` operator ensures we always take the more conservative (pessimistic) bound, so the objective never provides incentive to move $r_t$ outside the clip range.
+
+### Full PPO Loss
+
+$$L^{\text{PPO}}(\theta) = L^{\text{CLIP}}(\theta) - c_1\,L^{\text{VF}}(\theta) + c_2\,H[\pi_\theta]$$
+
+where:
+- $L^{\text{VF}}(\theta) = \left(V_\theta(s_t) - V_t^{\text{target}}\right)^2$ — squared-error value function loss (critic)
+- $H[\pi_\theta] = -\mathbb{E}[\log \pi_\theta(a \mid s)]$ — entropy bonus (prevents premature determinism)
+- $c_1, c_2$ — scalar coefficients
+
+Note: PPO-Clip has **no explicit KL term** in the loss. The clipping itself is the trust region mechanism. (A separate PPO-KL-Penalty variant does add a KL term but is less commonly used.)
+
+### LLM RL Setup with PPO
+
+In RLHF for LLMs:
+- **State** $s_t$: prompt $q$ + tokens generated so far $(o_1, \ldots, o_{t-1})$
+- **Action** $a_t$: next token $o_t$
+- **Policy** $\pi_\theta$: the language model itself
+- **Reward**: from a trained reward model, given only at end-of-sequence
+
+A KL penalty against a frozen reference model $\pi_{\text{ref}}$ (the pretrained checkpoint) is added to the reward to prevent the policy from deviating too far:
+
+$$r_{\text{total}}(o, q) = R_{\text{RM}}(o, q) - \beta \sum_t \log\frac{\pi_\theta(o_t \mid q, o_{<t})}{\pi_{\text{ref}}(o_t \mid q, o_{<t})}$$
+
+### Problems PPO Leaves for LLMs
+
+| Problem | Description |
+|---------|-------------|
+| **Critic memory** | $V_\phi$ must match $\pi_\theta$ in size for accurate estimates → doubles GPU memory |
+| **Critic instability** | Value estimates for LLMs are hard to calibrate; the distribution of returns shifts rapidly |
+| **Four-model complexity** | Actor $\pi_\theta$, critic $V_\phi$, reference $\pi_{\text{ref}}$, reward model $R$ must all fit in memory |
+| **No natural baseline** | Each query generates one response; no within-query relative comparison |
+
+---
+
+## 7. GRPO: Group Relative Policy Optimization
+
+> **Industry status:** Dominant for math and reasoning LLM RL since 2024. Used by DeepSeek (DeepSeekMath, DeepSeek-R1), Alibaba (Qwen2.5, Qwen2.5-VL), Shanghai AI Lab (InternVL3), and adopted broadly across the industry.  
+> **Key paper:** Shao et al., 2024 — DeepSeekMath (arXiv:2402.03300)
+
+### Problem Being Solved
+
+PPO requires a critic network — expensive in memory, hard to train stably for LLMs, and architecturally complex. For tasks with a clear scalar outcome reward (math: correct/incorrect; code: passes tests), can we eliminate the critic entirely?
+
+**GRPO's insight:** Sample $G$ responses to the *same prompt*. Their relative rewards provide a natural baseline — no learned value function needed.
+
+### Group Sampling and Advantage
+
+For each prompt $q$, sample $G$ outputs $\{o_i\}_{i=1}^G$ from the old policy $\pi_{\theta_\text{old}}(\cdot \mid q)$, and obtain scalar rewards $\{r_i\}_{i=1}^G$ from a reward model.
+
+Compute the **group-normalized advantage**:
+
+$$\hat{A}_i = \frac{r_i - \mu_r}{\sigma_r}, \qquad \text{where } \mu_r = \frac{1}{G}\sum_i r_i, \quad \sigma_r = \text{std}(\{r_i\})$$
+
+$\hat{A}_i$ is:
+- A single scalar applied uniformly to **all token positions** in output $o_i$ (the sequence-level reward has no natural token-level decomposition)
+- Positive when $o_i$ scores better than the group average; negative when worse
+- Dimensionless and normalized — stable across different reward scales
+
+### GRPO Objective
+
+$$\boxed{J_{\text{GRPO}}(\theta) = \mathbb{E}_{q,\,\{o_i\}}\!\left[\frac{1}{G}\sum_{i=1}^G \frac{1}{|o_i|}\sum_{t=1}^{|o_i|}\!\left\{\min\!\left(r_{i,t}(\theta)\,\hat{A}_i,\;\text{clip}(r_{i,t}(\theta), 1{-}\varepsilon, 1{+}\varepsilon)\,\hat{A}_i\right) - \beta\,\mathbb{D}_{\text{KL}}[\pi_\theta \| \pi_{\text{ref}}]\right\}\right]}$$
+
+where the **per-token importance ratio** is:
+
+$$r_{i,t}(\theta) = \frac{\pi_\theta(o_{i,t} \mid q,\,o_{i,<t})}{\pi_{\theta_\text{old}}(o_{i,t} \mid q,\,o_{i,<t})}$$
+
+### KL Penalty: Exact Form
+
+The KL term is computed **per token**, placed **inside the token sum**, and uses the Schulman bounded estimator (always $\geq 0$):
+
+$$\mathbb{D}_{\text{KL}}[\pi_\theta \| \pi_{\text{ref}}] \approx \frac{\pi_{\text{ref}}(o_{i,t} \mid q, o_{i,<t})}{\pi_\theta(o_{i,t} \mid q, o_{i,<t})} - \log\frac{\pi_{\text{ref}}(o_{i,t} \mid q, o_{i,<t})}{\pi_\theta(o_{i,t} \mid q, o_{i,<t})} - 1$$
+
+With $u = \pi_{\text{ref}} / \pi_\theta$: the estimator is $u - \log u - 1 \geq 0$ for all $u > 0$ (equality at $u = 1$), ensuring it always acts as a regularizer.
+
+### What GRPO Achieves
+
+| Aspect | PPO | GRPO |
+|--------|-----|------|
+| Critic network | Required | **Eliminated** |
+| Models in memory | 4 | **3** (actor, ref, reward) |
+| Advantage estimate | GAE with learned $V_\phi$ | Group mean — zero additional parameters |
+| IS ratio | Per-token | Per-token |
+| Suitable for | General RL | Tasks with scalar outcome reward |
+
+### Problems GRPO Leaves Unsolved
+
+**Problem 1: Token-level IS ratio is inconsistent with sequence-level rewards.**
+
+The reward $r_i$ is a single number for the entire sequence $o_i$, yet GRPO clips the importance ratio $r_{i,t}$ independently at each of the $|o_i|$ token positions. The optimization pressure at token $t$ depends only on how much $\pi_\theta(o_{i,t})$ changed, not on how much the full sequence probability $\pi_\theta(o_i)$ changed. This is theoretically mismatched: applying a single-sample ($N=1$) token-level IS correction to a sequence-level objective does not provide a valid importance-weighted estimate.
+
+**Problem 2: Entropy collapse over long training.**
+
+After many GRPO steps on high-reward sequences, consider what happens per token:
+- The model has learned to prefer correct answers: each token probability increases slightly, so $r_{i,t} \approx 1.02$ for most tokens in the winning sequence
+- $1.02 < 1 + \varepsilon$ → the per-token clip does **not** activate
+- Gradient flows freely, continuously increasing these token probabilities
+- Over time: the policy concentrates to near-determinism, losing diversity — **entropy collapse**
+
+**Problem 3: Model collapse for large MoE models.**
+
+In Mixture-of-Experts architectures, per-token importance ratio variance is amplified across experts, causing expert routing to degenerate over long GRPO training.
+
+---
+
+## 8. GSPO: Group Sequence Policy Optimization
+
+> **Industry status:** Deployed at Alibaba (Qwen3 series, Qwen3-Omni), adopted by Shanghai AI Lab (InternVL3.5). Emerging as the successor to GRPO for large and Omni models.  
+> **Key paper:** Alibaba Qwen Team, 2025 (arXiv:2507.18071)
+
+### Problem Being Solved
+
+GRPO clips $G \times T$ different per-token importance ratios independently, where $T = |o_i|$ can be thousands. This is both theoretically unjustified (a sequence-level reward needs a sequence-level IS correction) and practically problematic (per-token variance accumulates across long sequences, causing entropy collapse and MoE routing collapse).
+
+### Core Innovation: Sequence-Level Importance Ratio
+
+GSPO defines a single **sequence-level importance ratio** per output $o_i$ as the **geometric mean** of per-token ratios:
+
+$$\boxed{s_i(\theta) = \left(\frac{\pi_\theta(o_i \mid q)}{\pi_{\theta_\text{old}}(o_i \mid q)}\right)^{1/|o_i|} = \exp\!\left(\frac{1}{|o_i|}\sum_{t=1}^{|o_i|}\log\frac{\pi_\theta(o_{i,t} \mid q, o_{i,<t})}{\pi_{\theta_\text{old}}(o_{i,t} \mid q, o_{i,<t})}\right)}$$
+
+The $1/|o_i|$ length normalization keeps $s_i$ numerically stable regardless of sequence length. Without it, long sequences would yield $s_i \to 0$ or $s_i \to \infty$, making clipping ineffective.
+
+### GSPO Objective
+
+$$\boxed{J_{\text{GSPO}}(\theta) = \mathbb{E}_{q,\,\{o_i\}}\!\left[\frac{1}{G}\sum_{i=1}^G \min\!\left(s_i(\theta)\,\hat{A}_i,\;\text{clip}(s_i(\theta), 1{-}\varepsilon, 1{+}\varepsilon)\,\hat{A}_i\right)\right]}$$
+
+where the group advantage $\hat{A}_i = (r_i - \mu_r) / \sigma_r$ is identical to GRPO.
+
+There is **one scalar $s_i$ per sequence**. Clipping happens exactly **once per sequence**, not $T$ times. The inner sum over tokens is implicit in the computation of $s_i$, not in the loss itself.
+
+### Why GSPO Provides Gradient Stability: The Exact Argument
+
+The key difference between GRPO and GSPO is **gradient variance across tokens**, not whether clipping activates on overconfident sequences.
+
+Consider what happens per token across a high-reward sequence. Per-token ratios $r_{i,t}$ vary across positions — some tokens may have $r_{i,t} = 1.5$, others $0.8$, others $1.02$, depending on how much the local token distribution has shifted.
+
+**In GRPO:**
+Each token gets its **own IS weight** $r_{i,t}$ applied to its gradient. Across $T = 500$ tokens, these weights fluctuate independently. The variance of per-token weights accumulates over long sequences — tokens where the policy has changed a lot dominate the gradient, regardless of whether those changes are beneficial. In MoE models, this per-token variance destabilizes expert routing over long training.
+
+**In GSPO:**
+$s_i$ is the **geometric mean** of all per-token ratios:
+$$s_i = \exp\!\left(\frac{1}{|o_i|}\sum_{t=1}^{|o_i|}\log r_{i,t}\right)$$
+
+If every per-token ratio were $1.02$: $s_i = \exp\!\left(\frac{1}{T} \cdot T \cdot \log 1.02\right) = 1.02$ — the geometric mean of equal values is that value, regardless of $T$. The $1/|o_i|$ exponent keeps $s_i$ in a stable numerical range across all sequence lengths (without it, the full product $\prod_t r_{i,t}$ would vanish or explode for long sequences).
+
+Every token in sequence $i$ receives the **same IS weight** $s_i$, eliminating per-token variance in importance weighting. This is the theoretically correct importance weight for a sequence-level reward: since the reward $r_i$ applies uniformly to all tokens in $o_i$, the IS correction should also be uniform.
+
+> **Common misconception:** Because $s_i$ is a geometric mean, it does *not* grow as $(1.02)^T$. For small uniform per-token drift ($r_{i,t} = 1.02$ for all $t$), GSPO's $s_i = 1.02$ — just as in GRPO, the clip ($\varepsilon \approx 0.2$) does not activate. GSPO's benefit over GRPO is **variance reduction** and **theoretical consistency**, not stronger entropy regularization through clipping.
+
+### Gradient Comparison
+
+**GSPO gradient** (when $s_i$ is within clip range): the IS weight $s_i(\theta)$ is **uniform across all tokens** in sequence $i$:
+
+$$\nabla_\theta J_{\text{GSPO}} \propto \sum_i \hat{A}_i \cdot s_i(\theta) \cdot \frac{1}{|o_i|}\sum_t \nabla_\theta \log \pi_\theta(o_{i,t} \mid q, o_{i,<t})$$
+
+**GRPO gradient** (when per-token ratios are within clip range): each token gets its **own IS weight** $r_{i,t}$:
+
+$$\nabla_\theta J_{\text{GRPO}} \propto \sum_i \hat{A}_i \cdot \frac{1}{|o_i|}\sum_t r_{i,t}(\theta) \cdot \nabla_\theta \log \pi_\theta(o_{i,t} \mid q, o_{i,<t})$$
+
+In GSPO, the IS weight ($s_i$) and the gradient direction ($\nabla_\theta \log \pi_\theta$) are **decorrelated within a sequence** — this is the theoretically correct importance-weighted policy gradient for a sequence-level reward. In GRPO, they are **correlated at the token level**, producing random per-token fluctuations that accumulate over long sequences.
+
+### GRPO vs GSPO Summary
+
+| Aspect | GRPO | GSPO |
+|--------|------|------|
+| IS ratio | Per-token $r_{i,t}$ — $T$ scalars per sequence | Sequence geometric mean $s_i$ — 1 scalar per sequence |
+| Clipping | $T$ independent clips per sequence | 1 clip per sequence |
+| Gradient weight | Token-varying (theoretically inconsistent) | Uniform across sequence (theoretically correct) |
+| Gradient variance | Per-token weights fluctuate across sequence | Uniform IS weight per sequence — variance eliminated |
+| MoE stability | Degrades | Stable |
+| Adopted by | DeepSeek, Qwen2.5, InternVL3 | Qwen3, Qwen3-Omni, InternVL3.5 |
+
+---
+
+## 8.5 DAPO: Decoupled Clip and Dynamic Sampling Policy Optimization
+
+> **Industry status:** Published by ByteDance Seed + Tsinghua AIR (2025). Applied to Qwen2.5-32B, achieving 50 points on AIME 2024. Influential in the open-source long-chain-of-thought reasoning community; adoption outside ByteDance is moderate.  
+> **Key paper:** Yu et al., 2025 (arXiv:2503.14476)
+
+### Problem Being Solved
+
+GRPO and GSPO retain a KL penalty against a frozen reference model. For **long chain-of-thought (CoT) reasoning**, this constraint becomes counterproductive: the policy *needs* to deviate substantially from the reference model to learn complex multi-step reasoning. Additionally, GRPO's symmetric clipping and per-sample normalization have two concrete inefficiencies — it wastes compute on groups with no learning signal, and lets short sequences dominate the gradient.
+
+DAPO makes four targeted changes to GRPO, **removing the KL penalty entirely**.
+
+### Innovation 1: Clip-Higher (Asymmetric Clipping)
+
+Standard GRPO clips the importance ratio symmetrically: $\text{clip}(r, 1{-}\varepsilon, 1{+}\varepsilon)$.
+
+DAPO decouples the lower and upper bounds:
+
+$$\text{clip}(r_{i,t}(\theta),\; 1 - \varepsilon_{\text{low}},\; 1 + \varepsilon_{\text{high}})$$
+
+with $\varepsilon_{\text{low}} = 0.2$ and $\varepsilon_{\text{high}} = 0.28$.
+
+The wider upper bound allows tokens with positive advantage to gain probability mass more aggressively — actions that are better than average get a larger update budget. The standard lower bound maintains protection against catastrophically large probability decreases. This asymmetry implicitly manages entropy without requiring an explicit entropy bonus term: under-explored actions can grow faster, sustaining diversity.
+
+### Innovation 2: Dynamic Sampling
+
+GRPO can waste compute on groups where every output has the same reward: if all $G$ outputs are correct ($r_i = 1$ for all $i$), or all are wrong ($r_i = 0$ for all $i$), then the group-normalized advantage $\hat{A}_i = (r_i - \mu) / \sigma$ is undefined (division by zero) or identically zero — producing no gradient signal.
+
+DAPO filters at the group level, only training on groups that satisfy:
+
+$$0 < \left|\{o_i \mid \text{correct}(o_i)\}\right| < G$$
+
+Groups with 0% or 100% accuracy are discarded during sampling, saving rollout compute and focusing gradient updates exclusively on informative, mixed-outcome groups.
+
+### Innovation 3: Token-Level Normalization
+
+GRPO averages the loss over samples: $\frac{1}{G}\sum_i \frac{1}{|o_i|} \sum_t [\ldots]$. This means a group of $G$ short outputs contributes the same gradient weight as a group of $G$ long outputs — short sequences dominate when mixed with long ones.
+
+DAPO normalizes by the **total token count** across all outputs in the group:
+
+$$\frac{1}{\sum_i |o_i|} \sum_i \sum_t [\ldots]$$
+
+This gives each token equal weight across the batch, ensuring long reasoning chains contribute proportionally to the gradient update.
+
+### Innovation 4: Overlong Reward Shaping
+
+For long-CoT tasks, models can game the reward by producing excessively verbose (and low-quality) reasoning. DAPO adds a soft length penalty to the reward:
+
+$$R_{\text{length}}(o_i) = \begin{cases} 0 & \text{if } |o_i| \leq L_{\max} - L_{\text{cache}} \\ \dfrac{L_{\max} - L_{\text{cache}} - |o_i|}{L_{\text{cache}}} & \text{if } L_{\max} - L_{\text{cache}} < |o_i| \leq L_{\max} \\ -1 & \text{if } |o_i| > L_{\max} \end{cases}$$
+
+with $L_{\max} = 20{,}480$ tokens and $L_{\text{cache}} = 4{,}096$ tokens. This creates a soft ramp: responses near the length limit receive a partial penalty that scales linearly, avoiding discontinuous reward cliffs.
+
+### Full DAPO Objective
+
+$$\boxed{J_{\text{DAPO}}(\theta) = \mathbb{E}\!\left[\frac{1}{\sum_i |o_i|}\sum_{i=1}^G \sum_{t=1}^{|o_i|} \min\!\left(r_{i,t}(\theta)\,\hat{A}_i,\;\text{clip}(r_{i,t}(\theta), 1{-}\varepsilon_{\text{low}}, 1{+}\varepsilon_{\text{high}})\,\hat{A}_i\right)\right]}$$
+
+subject to: $0 < |\{o_i : \text{correct}(o_i)\}| < G$
+
+where $\hat{A}_i = \bigl(r_i + R_{\text{length}}(o_i) - \mu\bigr) / \sigma$. **There is no KL penalty term.** No reference model is required during training.
+
+### GRPO vs DAPO vs GSPO
+
+| Aspect | GRPO | DAPO | GSPO |
+|--------|------|------|------|
+| KL penalty | Yes (token-level) | **Removed** | Removed |
+| Clipping | Symmetric $\varepsilon$ | **Asymmetric** $\varepsilon_{\text{low}} / \varepsilon_{\text{high}}$ | Symmetric, sequence-level |
+| Normalization | Per-sample $1/G$ | **Per-token** $1/\sum|o_i|$ | Per-sample |
+| IS ratio granularity | Per-token | Per-token | **Per-sequence (geometric mean)** |
+| Empty-group filtering | No | **Yes** | No |
+| Length shaping | No | **Yes** | No |
+| Adopted by | DeepSeek, Alibaba, many | ByteDance | Alibaba (Qwen3), Shanghai AI Lab |
+
+---
+
+# Part III: Multimodal Reinforcement Learning
+
+## 9. Why Text RL Cannot Be Directly Applied
+
+When applying RL to **image and video generation** (diffusion models, flow-matching models), three fundamental obstacles arise that do not exist in text RL.
+
+### Challenge 1: The Stochasticity Problem
+
+Policy gradient requires computing $\log \pi_\theta(a \mid s)$ — the log-probability of the chosen action — to form the score function and the importance ratio $r_t(\theta)$.
+
+For text LLMs, this is trivial: the model outputs a softmax distribution over the vocabulary, so $\log \pi_\theta(o_t \mid q, o_{<t})$ is immediately available.
+
+Modern image/video generation uses **flow-matching ODE solvers** (used in FLUX, SD3.5, HunyuanVideo, Wan), where the denoising process is:
+
+$$\frac{dx_t}{dt} = v_\theta(x_t, t, c)$$
+
+This is a **deterministic ODE** — given initial noise $x_T \sim \mathcal{N}(0, I)$, the entire trajectory $x_T \to \cdots \to x_0$ is completely determined. The "policy" $\pi_\theta(x_{t-1} \mid x_t, c)$ is a **Dirac delta distribution**:
+
+$$p_\theta(x_{t-1} \mid x_t, c) = \delta\!\left(x_{t-1} - f_\theta(x_t, t, c)\right)$$
+
+Log-probability is either $0$ (if $x_{t-1}$ is exactly on the ODE trajectory) or $-\infty$ (otherwise). The importance ratio $r_t(\theta)$ is undefined. **Standard policy gradient cannot be applied.**
+
+### Challenge 2: Sparse Credit Assignment
+
+In image generation, the reward $R(x_0, c)$ arrives only after the full $T$-step denoising chain completes ($x_T \to x_{T-1} \to \cdots \to x_0$). All intermediate steps carry zero reward. How much credit does step $t = 35$ (out of $T = 50$) deserve for the final image quality?
+
+In text RL, this is handled naturally by the per-token structure. For image generation, naive REINFORCE assigns the same terminal reward to every denoising step — a crude approximation.
+
+### Challenge 3: Computational Cost
+
+In LLM RL: one forward pass generates one token. With a group of $G = 8$ responses, each gradient step needs 8 forward passes.
+
+In image RL: one rollout requires $T = 20$–$50$ full forward passes through the diffusion model (one per denoising step). With $G = 8$ samples, each gradient step needs $G \times T = 160$–$400$ model evaluations — 20–50× more expensive than text RL.
+
+---
+
+## 10. DDPO: Establishing the Diffusion MDP
+
+> **Industry status:** Foundational paper (2023). Largely superseded by Flow-GRPO for modern ODE-based generation models, but remains the conceptual foundation.  
+> **Key paper:** Black et al., 2023 (arXiv:2305.13301)
+
+### Problem Being Solved
+
+Before DDPO, there was no principled framework for applying policy gradient to diffusion models. DDPO establishes that the DDPM denoising chain *is* an MDP, making standard RL applicable — but only for DDPM's stochastic (Gaussian) sampler.
+
+### The Diffusion MDP
+
+| MDP Element | DDPM Mapping |
+|-------------|-------------|
+| State $s_t$ | $(c,\, t,\, x_t)$ — text condition, timestep, noisy image |
+| Action $a_t$ | $x_{t-1}$ — the next denoised image |
+| Policy $\pi_\theta(a_t \mid s_t)$ | $p_\theta(x_{t-1} \mid x_t, c)$ — the reverse diffusion step |
+| Transition | Deterministic given action: $s_{t-1} = (c, t-1, x_{t-1})$ |
+| Reward | $r(x_0, c)$ at $t=0$, else $0$ |
+| Initial state | $x_T \sim \mathcal{N}(0, I)$ |
+
+### DDPM as a Stochastic Policy
+
+DDPM's reverse step is a Gaussian:
+
+$$p_\theta(x_{t-1} \mid x_t, c) = \mathcal{N}\!\left(x_{t-1};\;\mu_\theta(x_t, t, c),\;\sigma_t^2 I\right)$$
+
+This has a tractable log-probability, making the REINFORCE score function well-defined:
+
+$$\log p_\theta(x_{t-1} \mid x_t, c) = -\frac{\|x_{t-1} - \mu_\theta(x_t, t, c)\|^2}{2\sigma_t^2} + \text{const}$$
+
+### DDPO Objectives
+
+**DDPO-SF** (score function / REINFORCE):
+
+$$\nabla_\theta J = \mathbb{E}\!\left[\sum_{t=0}^T \nabla_\theta \log p_\theta(x_{t-1} \mid x_t, c) \cdot r(x_0, c)\right]$$
+
+**DDPO-IS** (importance-sampled, with PPO-style clipping):
+
+$$\nabla_\theta J \approx \mathbb{E}\!\left[\sum_{t=0}^T \frac{p_\theta(x_{t-1} \mid x_t, c)}{p_{\theta_\text{old}}(x_{t-1} \mid x_t, c)} \cdot \nabla_\theta \log p_\theta(x_{t-1} \mid x_t, c) \cdot r(x_0, c)\right]$$
+
+### Why DDPO Cannot Handle ODE-Based Samplers
+
+DDIM and flow-matching ODE solvers produce **deterministic** updates:
+
+$$x_{t-1} = f_\theta(x_t, t, c) \quad \text{(no noise term)}$$
+
+The "policy" is $p_\theta(x_{t-1} \mid x_t, c) = \delta(x_{t-1} - f_\theta(x_t, t, c))$ — a Dirac delta. The log-probability is undefined at every point except the exact trajectory. DDPO's score function and IS ratio cannot be computed.
+
+**Problem DDPO leaves unsolved:** Cannot be applied to modern flow-matching models (FLUX, SD3.5, HunyuanVideo) that use deterministic ODE solvers.
+
+---
+
+## 11. Flow-GRPO: Solving the Stochasticity Problem
+
+> **Industry status:** The foundational reference algorithm for RL on flow-matching models. Foundation for MixGRPO, DanceGRPO, and all subsequent flow-matching RL work.  
+> **Key paper:** Liu et al., 2025 (arXiv:2505.05470) — NeurIPS 2025
+
+### Problem Being Solved
+
+Flow-matching ODE solvers are deterministic — $\log \pi_\theta$ is undefined, making policy gradient impossible. DDPO only works for DDPM's Gaussian sampler, not the ODE-based models used in all major production systems.
+
+### Core Innovation 1: ODE-to-SDE Conversion
+
+**Key mathematical fact (probability flow equivalence):** For any ODE $dx = v_\theta(x, t, c)\,dt$ that preserves marginals $\{p_t(x)\}$, there exists a parameterized family of SDEs — indexed by a free noise schedule $\sigma_t \geq 0$ — that preserve the **exactly same marginal distributions** at every timestep:
+
+$$dx_t = \left[v_\theta(x_t, t, c) - \frac{\sigma_t^2}{2}\nabla_{x_t}\log p_t(x_t)\right]dt + \sigma_t\,dW_t$$
+
+For Rectified Flow, where $p_t$ is Gaussian with a closed-form score, substituting gives the **Rectified Flow SDE**:
+
+$$dx_t = \left[v_\theta(x_t, t, c) + \frac{\sigma_t^2}{2t}\!\left(x_t + (1-t)v_\theta(x_t, t, c)\right)\right]dt + \sigma_t\,dW_t$$
+
+After Euler-Maruyama discretization with step $\Delta t$, each one-step transition is an **isotropic Gaussian**:
+
+$$x_{t-1} = x_t + \mu_\theta(x_t, t, c)\,\Delta t + \sigma_t\sqrt{\Delta t}\;\varepsilon, \qquad \varepsilon \sim \mathcal{N}(0, I)$$
+
+This gives a tractable per-step policy:
+
+$$p_\theta(x_{t-1} \mid x_t, c) = \mathcal{N}\!\left(x_{t-1};\;\mu_\theta(x_t, t, c)\,\Delta t + x_t,\;\sigma_t^2\Delta t\,I\right)$$
+
+The per-step importance ratio is now well-defined (ratio of two Gaussians):
+
+$$r_t^i(\theta) = \frac{p_\theta(x_{t-1}^i \mid x_t^i, c)}{p_{\theta_\text{old}}(x_{t-1}^i \mid x_t^i, c)}$$
+
+**Critical property:** The SDE and ODE produce **identical marginal distributions** $p_t(x)$ at every timestep — the model's generation behavior at inference is unchanged. The injected noise cancels out in distribution. The SDE is only used during training to provide the stochasticity needed for RL.
+
+### Core Innovation 2: Denoising Reduction
+
+Each RL rollout with $T_\text{eval} = 40$ denoising steps requires 40 model evaluations per sample. With $G = 8$ samples, each gradient step needs 320 evaluations.
+
+**Denoising Reduction:** Train with $T_\text{train} = 10$ denoising steps; evaluate final images with $T_\text{eval} = 40$ steps. The SDE's property of preserving marginals ensures that rewards computed from 10-step trajectories still provide sufficient and stable gradient signal.
+
+Result: $> 4\times$ training speedup with no degradation in final reward quality.
+
+### Flow-GRPO Objective
+
+Directly analogous to GRPO, with "token positions" replaced by "denoising steps":
+
+$$\boxed{J_{\text{Flow-GRPO}}(\theta) = \mathbb{E}_{c,\,\{x_0^i\}}\!\left[\frac{1}{G}\sum_{i=1}^G \frac{1}{T}\sum_{t=1}^T\!\left\{\min\!\left(r_t^i(\theta)\,\hat{A}_i,\;\text{clip}(r_t^i(\theta), 1{-}\varepsilon, 1{+}\varepsilon)\,\hat{A}_i\right) - \beta\,D_{\text{KL}}(\pi_\theta \| \pi_\text{ref})\right\}\right]}$$
+
+where:
+- $r_t^i(\theta)$: importance ratio for denoising step $t$, sample $i$ (ratio of two Gaussian densities)
+- $\hat{A}_i = \bigl(R(x_0^i, c) - \mu_R\bigr) / \sigma_R$: group-normalized reward — same scalar for **all steps** of sample $i$
+- $T = T_\text{train} = 10$ in practice
+
+### Structural Analogy: Text vs Image RL
+
+| Concept | Text GRPO | Flow-GRPO |
+|---------|-----------|-----------|
+| "Token" | Next token $o_t$ | Denoising step $x_{t-1}$ |
+| "Policy" | $\pi_\theta(o_t \mid q, o_{<t})$ — softmax | $p_\theta(x_{t-1} \mid x_t, c)$ — Gaussian (after SDE) |
+| IS ratio | Ratio of softmax probs | Ratio of Gaussian densities |
+| Reward | At end of sequence | At end of denoising chain ($x_0$) |
+| Group size $G$ | 8–16 completions | 8–16 generated images |
+
+### Results
+
+On SD3.5-M (GenEval benchmark):
+- Compositional accuracy: 63% → 95%
+- Text rendering accuracy: 59% → 92%
+
+**Problems Flow-GRPO leaves unsolved:**
+- All $T_\text{train}$ denoising steps are SDE — expensive; ODE would be faster
+- Inherits GRPO's token-level IS ratio limitation (each step clipped independently)
+
+---
+
+## 12. MixGRPO: Production-Scale Efficiency
+
+> **Industry status:** Confirmed deployed in HunyuanVideo 1.5 production pipeline (Tencent). The most clearly industry-deployed RL algorithm for image/video generation.  
+> **Key paper:** Li et al., 2025 (arXiv:2507.21802) — Tencent Hunyuan
+
+### Problem Being Solved
+
+Flow-GRPO converts **all** $T$ denoising steps to SDE. This is inefficient for two reasons:
+
+1. SDE sampling is more expensive than deterministic ODE sampling
+2. Not all denoising steps contribute equally to the reward — early steps (high noise level) determine global composition; late steps (low noise) determine fine texture detail. RL exploration is most valuable in a targeted window, not uniformly across all steps
+
+### Core Innovation: Sliding-Window SDE
+
+MixGRPO uses a **sliding window** $W = [t_\text{start}, t_\text{end}]$:
+
+- **Outside the window:** deterministic ODE (fast, standard inference behavior)
+- **Inside the window:** SDE + GRPO optimization (exploration and learning happen here)
+
+Only steps within $W$ contribute to the GRPO loss:
+
+$$J_{\text{MixGRPO}}(\theta) = \frac{1}{G}\sum_{i=1}^G \frac{1}{|W|}\sum_{t \in W}\!\left\{\min\!\left(r_t^i(\theta)\,\hat{A}_i,\;\text{clip}(r_t^i(\theta), 1{-}\varepsilon, 1{+}\varepsilon)\,\hat{A}_i\right)\right\}$$
+
+where $|W| = t_\text{end} - t_\text{start}$ is the window size.
+
+**MixGRPO-Flash** additionally uses the ODE trajectory as a "teacher" for steps near the window boundary, preventing the SDE policy from drifting too far from the ODE distribution and causing out-of-distribution issues.
+
+### Results
+
+On Tencent Hunyuan DiT:
+- ~50% training time reduction vs. DanceGRPO (full-SDE baseline)
+- MixGRPO-Flash: 71% faster training than DanceGRPO
+- ImageReward: 1.088 → 1.629
+
+### HunyuanVideo 1.5 RLHF Pipeline (Deployed Production System)
+
+MixGRPO is embedded in Tencent's production RLHF pipeline alongside:
+
+- A VLM-based reward model scoring four dimensions: text alignment, image consistency, visual quality, motion dynamics
+- The **PAVRM** (Process-Aware Video Reward Model, arXiv:2511.21541) — evaluates rewards from **noisy latents** at intermediate denoising timesteps, without VAE decoding. This eliminates the memory overhead of decoding intermediate frames, enabling process-level reward feedback.
+- Separate RLHF training tracks for T2V and I2V tasks
+
+---
+
+## 13. DiffusionNFT: The Forward-Process Alternative
+
+> **Industry status:** ICLR 2026 Oral; NVlabs (NVIDIA) open-sourced. Strong academic result; a leading candidate for future industry adoption.  
+> **Key paper:** Zheng et al., 2025 (arXiv:2509.16117)
+
+### Problem Being Solved
+
+Flow-GRPO's ODE-to-SDE conversion modifies the model's sampling process during training, requiring careful noise calibration and SDE-specific implementation. Is there a way to do RL on flow-matching models *without* changing the reverse process at all?
+
+### Core Innovation: Contrastive RL via the Forward Process
+
+The **forward process** $q(x_t \mid x_0) = \mathcal{N}(x_t;\;\alpha_t x_0,\;\sigma_t^2 I)$ (which adds noise to a clean image) is analytically tractable and does not depend on the neural network $\theta$.
+
+DiffusionNFT's approach:
+1. Generate **positive** samples $x_0^+$ (high reward) and **negative** samples $x_0^-$ (low reward) using the standard ODE (unchanged)
+2. Compute forward-process distributions at arbitrary timesteps $t$ for both
+3. Derive implicit policy improvement directions by contrasting these forward distributions — without requiring log-likelihood of the reverse process, without SDE modification, without any ODE solver changes
+
+This is **likelihood-free** and **solver-independent**.
+
+### Results
+
+- 25× more training efficient than Flow-GRPO
+- GenEval: 0.24 → 0.98 in 1,000 training steps (Flow-GRPO requires 5,000+)
+- CFG-free at inference
+- Works with any black-box ODE solver
+
+---
+
+## 14. Flow-DPO: Offline Preference Optimization
+
+> **Industry status:** Widely used as an offline alignment baseline. Used in SkyReels-V2 (SkyworkAI), various Wan2.1-based downstream models. Provides the foundational video reward model infrastructure.  
+> **Key paper:** Wan et al., 2025 — "Improving Video Generation with Human Feedback" (arXiv:2501.13918) — NeurIPS 2025
+
+### When to Use Offline vs Online RL
+
+| Criterion | Online RL (Flow-GRPO, MixGRPO) | Offline (Flow-DPO) |
+|-----------|-------------------------------|-------------------|
+| Rollout cost | High (live generation required) | None (uses pre-collected data) |
+| Data freshness | Always on-policy | Fixed dataset — can be stale |
+| Performance ceiling | Higher | Lower |
+| Implementation complexity | High | Low |
+| Typical use | Production alignment stage | Cold-start alignment, data-rich settings |
+
+### DPO Background
+
+Direct Preference Optimization (Rafailov et al., 2023) rewrites the RLHF objective as a supervised classification on preference pairs $(o^w, o^l)$ (winner and loser responses for the same prompt $q$):
+
+$$L^{\text{DPO}}(\theta) = -\mathbb{E}\!\left[\log\sigma\!\left(\beta\log\frac{\pi_\theta(o^w \mid q)}{\pi_{\text{ref}}(o^w \mid q)} - \beta\log\frac{\pi_\theta(o^l \mid q)}{\pi_{\text{ref}}(o^l \mid q)}\right)\right]$$
+
+No reward model, no rollouts, no actor-critic — only binary preference labels.
+
+### Flow-DPO for Generative Models
+
+For flow-matching models, the log-probability ratio $\log \pi_\theta(x_0 \mid c)$ is approximated via the flow-matching training loss:
+
+$$\log \pi_\theta(x_0 \mid c) \propto -\mathbb{E}_{t,\,\varepsilon}\!\left[\|v_\theta(x_t, t, c) - (x_0 - \varepsilon)\|^2\right]$$
+
+This connects the DPO objective to the supervised flow-matching loss, enabling DPO without any modification to the sampler.
+
+The same paper also introduces **VideoReward** — a multi-dimensional video reward model trained on 182K annotated triplets (108K videos) scoring Visual Quality, Motion Quality, and Text Alignment across 3D temporal and spatial dimensions. VideoReward is now widely used as the reward signal in online RL pipelines as well.
+
+---
+
+# Part IV: Industry Landscape
+
+## 15. Industry Implementation Summary
+
+### The Algorithm Lineage
+
+```
+REINFORCE (1992)
+    │  Problem: high variance, no step-size control
+    ▼
+Actor-Critic + GAE
+    │  Problem: critic needed but no trust region
+    ▼
+TRPO (2015)
+    │  Problem: second-order method, computationally intractable
+    ▼
+PPO (2017) ──────────────────────────────────── Text RL for RLHF
+    │  Problem: critic doubles memory; unstable for LLMs
+    ▼
+GRPO (2024) ─────────────────────────────────── LLM reasoning/math RL
+    │  Problem: token-level IS → entropy collapse at sequence level
+    ▼
+GSPO (2025) ─────────────────────────────────── Large/Omni models
+
+For image/video generation:
+
+ODE-based generation models (no log-likelihood)
+    │  Problem: deterministic sampler → policy gradient undefined
+    ▼
+DDPO (2023) ─────────────────────────────────── Works only for DDPM
+    │  Problem: can't handle ODE/flow-matching models
+    ▼
+Flow-GRPO (2025) ────────────────────────────── Reference algorithm for flow RL
+    │  Problem: all-step SDE is expensive
+    ├──▶ MixGRPO (2025) ───────────────────────── Industry deployed (Tencent)
+    └──▶ DiffusionNFT (2025) ──────────────────── Forward-process alternative (25× faster)
+```
+
+### Algorithm → Deployed Model Mapping
+
+| Algorithm | Company | Deployed Model(s) | Modality | Paper Available |
+|-----------|---------|------------------|----------|-----------------|
+| **PPO** | OpenAI | InstructGPT, GPT-4 (early) | Text | Yes |
+| **GRPO** | DeepSeek | DeepSeekMath, DeepSeek-R1 | Text (math/reasoning) | Yes |
+| **GRPO** | Alibaba | Qwen2.5, Qwen2.5-VL | Text + Vision | Yes |
+| **GRPO** | Shanghai AI Lab | InternVL3 | Vision-Language | Yes |
+| **GSPO** | Alibaba | Qwen3, Qwen3-Omni | Text + Vision + Audio | Yes |
+| **GSPO** | Shanghai AI Lab | InternVL3.5 | Vision-Language | Yes |
+| **MixGRPO** | Tencent | HunyuanVideo 1.5 | T2V, I2V | Yes |
+| **Flow-GRPO (variant)** | ByteDance | Seedance 1.0 (base method) | T2V, I2V | Partial |
+| **Flow-DPO** | SkyworkAI | SkyReels-V2 | T2V | Yes |
+| **RLHF (proprietary)** | OpenAI | GPT-4o Native Image | T2I | **No** |
+| **RLHF (proprietary)** | Google DeepMind | Nano Banana (Gemini image) | T2I | **No** |
+
+### Academic vs Industry: Classification
+
+**Confirmed industry-deployed algorithms:**
+- PPO, GRPO, GSPO (text/VLM RL)
+- MixGRPO (video generation RL)
+- Flow-DPO / VideoReward infrastructure (offline alignment)
+
+**Academic results with strong industry influence (foundational references, likely in internal pipelines):**
+- Flow-GRPO, DanceGRPO, DiffusionNFT, PAVRM/PRFL
+
+**Academic only (not confirmed in production):**
+- TreeGRPO, DGPO, ViPO, Stepwise-Flow-GRPO, OP-GRPO, DenseGRPO, BranchGRPO, SAGE-GRPO, AR-GRPO, STAGE, MAR-GRPO, UDM-GRPO, VGGRPO, and the 30+ other GRPO variants catalogued in the survey arXiv:2603.06623
+
+**Industry deployed but unpublished:**
+- OpenAI GPT-4o Image RLHF, Google Nano Banana RLHF — both use human-feedback-based alignment but have published no algorithm papers
+
+---
+
+## Key Takeaways
+
+**1. The importance ratio is the central design choice.**
+
+Every algorithm in this family differs primarily in *what* it clips: per-token (PPO, GRPO), per-sequence geometric mean (GSPO), per-denoising-step (Flow-GRPO), or per-window-of-steps (MixGRPO). The choice of granularity determines stability, sample efficiency, and applicability to different architectures.
+
+**2. Eliminating the critic was the most impactful practical advance.**
+
+The PPO → GRPO transition — removing the critic by using group-relative advantages — cut memory requirements by 25%, eliminated critic training instability, and simplified the training pipeline dramatically. This single change unlocked LLM RL at scale.
+
+**3. Sequence-level IS is theoretically correct for sequence-level rewards.**
+
+GSPO's key insight — that a sequence-level reward requires a sequence-level IS correction — directly resolves GRPO's entropy collapse and MoE instability. Expect GSPO-style sequence-level clipping to become the standard for large models and Omni models.
+
+**4. Stochasticity is the root problem for diffusion RL.**
+
+Flow-GRPO's ODE→SDE conversion, DiffusionNFT's forward-process approach, and MixGRPO's sliding window all address the same root cause: deterministic ODE solvers have no tractable log-likelihood. Every practical algorithm for image/video RL must solve this problem in some way.
+
+**5. The frontier is proprietary.**
+
+OpenAI (GPT-4o Image) and Google (Nano Banana) deploy RLHF for image generation but publish no algorithm details. The published literature is dominated by Chinese research groups — DeepSeek, Alibaba/Qwen, Tencent, ByteDance, Shanghai AI Lab — who have released both the algorithms and the models trained with them.
+
+---
+
+---
+
+# Part V: Reward Models
+
+## 16. Reward Model Design and Scaling
+
+Reward models are the ground truth signal that drives all RL training. Their design fundamentally determines what the policy learns — a misspecified reward produces a misspecified model (Goodhart's Law). This section covers the three main reward paradigms and the key empirical findings on how reward models scale.
+
+### 16.1 Rule-Based Rewards
+
+The most reliable rewards require no learned model — they are derived directly from verifiable properties of the output.
+
+| Domain | Rule-Based Reward |
+|--------|------------------|
+| Mathematics | Exact match against known answer (pass/fail); symbolic equivalence check |
+| Code | Unit test pass rate; compilation success |
+| Formal proofs | Proof verifier (Lean, Isabelle) |
+| Structured output | JSON schema validation, regex match |
+
+**Why rule-based rewards are preferred when available:** They cannot be hacked — there is no proxy to overfit. They are also stable: the reward function does not change during training, unlike a learned RM that may drift. DeepSeek-R1, DAPO, and most math reasoning RL papers use rule-based rewards exclusively.
+
+**Limitations:** Only applicable to domains with verifiable ground truth. Open-ended generation (creative writing, general conversation, instruction following) has no natural verifiable criterion.
+
+### 16.2 Outcome Reward Models (ORM)
+
+For domains without verifiable ground truth, a neural reward model is trained on human preference data to predict a scalar score for a complete response.
+
+**Training data:** Preference pairs $(o^w, o^l, q)$ — a winner response and a loser response for the same prompt, annotated by humans. The RM is trained with a Bradley-Terry objective:
+
+$$L^{\text{RM}}(\phi) = -\mathbb{E}_{(q, o^w, o^l)}\!\left[\log\sigma\!\left(r_\phi(q, o^w) - r_\phi(q, o^l)\right)\right]$$
+
+This pushes $r_\phi(q, o^w) > r_\phi(q, o^l)$ for all preference pairs.
+
+The RM is then used as a drop-in replacement for the environment reward in PPO, GRPO, or GSPO: $R(o, q) = r_\phi(q, o)$.
+
+**Key limitation — reward hacking:** The RL policy will exploit any systematic error in the RM. As the policy moves further from the training distribution of the RM, the RM's predictions become increasingly unreliable. This is controlled by the KL penalty against the reference model (in GRPO) or via the clip constraint (in DAPO).
+
+### 16.3 Process Reward Models (PRM)
+
+An ORM assigns a single scalar to the complete output. A PRM assigns a reward to each **intermediate reasoning step**, providing denser supervision.
+
+**Motivation:** For multi-step reasoning (math proofs, code planning), a correct final answer can follow from an incorrect intermediate step, and vice versa. Step-level feedback allows the model to learn which reasoning patterns are valid, not just which final answers are correct.
+
+**Let's Verify Step by Step** (Lightman et al., OpenAI 2023, arXiv:2305.20050): The foundational PRM paper. Given a solution decomposed into steps $s_1, s_2, \ldots, s_n$, human annotators label each step as correct/incorrect. The PRM $r_\phi(s_t \mid q, s_1, \ldots, s_{t-1})$ is trained to predict per-step labels. Released **PRM800K**: 800K step-level human annotations on MATH. Result: process-supervised models solve **78% of MATH test problems** vs. lower performance for outcome-supervised models under identical compute.
+
+**Math-Shepherd** (Wang et al., 2024, arXiv:2312.08935): Eliminates human annotation via **Monte Carlo automatic labeling**. For each intermediate step $s_t$ in a candidate solution, roll out $K$ completions forward and estimate the step's correctness probability as the fraction reaching the correct final answer:
+
+$$r_\phi(s_t) \approx \frac{1}{K}\sum_{k=1}^K \mathbf{1}[\text{rollout}_k \text{ reaches correct answer}]$$
+
+A step is labeled positive if any rollout succeeds (hard label) or proportionally to success rate (soft label). This produces PRM training data at scale without human annotators. Integration with PPO: each reasoning step becomes a state-action unit receiving $r_\phi(s_t)$ as its per-step reward signal.
+
+Results on Mistral-7B with step-by-step PPO:
+- GSM8K: 77.9% → 84.1%
+- MATH: 28.6% → 33.0%
+
+**The connection between GRPO and PRMs** (arXiv:2509.21154 — "GRPO is Secretly a Process Reward Model"): A surprising theoretical result: GRPO with an outcome reward model is mathematically equivalent to PRM-aware RL with a Monte Carlo-estimated PRM, whenever trajectories share overlapping prefixes. The group comparison in GRPO implicitly performs step-level credit assignment even when only outcome rewards are given — no explicit PRM is needed for this effect to occur.
+
+### 16.4 Generative Reward Models (LLM-as-Judge)
+
+A newer paradigm: use a large language model itself as the reward function, generating a **verbal critique** before producing a scalar score. This leverages the LLM's reasoning abilities for evaluation.
+
+**DeepSeek-GRM** (arXiv:2504.02495): Introduces Self-Principled Critique Tuning (SPCT). The generative RM is trained to first produce a reasoning chain that critiques the response, then output a scalar. At inference, multiple independent critiques are generated and aggregated via a meta-RM. Key finding: **inference-time compute scaling for RMs** — generating more critiques and taking the consensus improves reward quality, analogous to best-of-N sampling for policies. Generative RMs can match or exceed larger trained scalar RMs at test time.
+
+### 16.5 Scaling Laws for Reward Models
+
+**Scaling Laws for Reward Model Overoptimization** (Gao et al., OpenAI 2022, arXiv:2210.10760): The foundational paper on RM scaling. Key findings:
+
+- The relationship between gold-standard reward and the KL divergence from the reference policy follows a predictable functional form:
+$$J_{\text{gold}} \approx \alpha \sqrt{D_{\text{KL}}} - \beta D_{\text{KL}}$$
+where $\alpha, \beta$ are constants that scale smoothly with RM size and training data.
+
+- **Larger RMs delay but do not prevent overoptimization.** For any fixed RM, there is a KL budget beyond which the gold reward decreases. A 6× larger RM shifts this optimum further out but does not eliminate it.
+
+- **Proxy gaming is universal:** Under best-of-$N$ or RL optimization, the RM is eventually gamed regardless of its quality. The severity scales inversely with RM size and training data.
+
+**Does RLHF Scale?** (arXiv:2412.06000, Tsinghua/Zhipu AI, December 2024): Directly studies scaling of RM size and policy size in RLHF:
+
+Key findings:
+- Larger reward models offer only **modest gains** in downstream policy quality — doubling RM size rarely doubles alignment improvement
+- Larger policy models benefit **less** from RLHF when the RM is fixed: performance gain drops from **4.4% to 1.9%** as policy size grows from 9B to 200B parameters (the RM becomes the bottleneck)
+- On reasoning tasks (MATH, LiveCodeBench), performance plateaus rapidly after initial RL improvement
+- Overall conclusion: **RLHF scales less efficiently than pretraining.** Reward model quality, not size, is the primary bottleneck.
+
+**Skywork-Reward** (arXiv:2410.18451, Skywork/Kunlun, October 2024): Data-centric scaling study. Key finding: **only 80K carefully curated preference pairs** were sufficient to reach #1 on RewardBench with Skywork-Reward-Gemma-27B. More data is not always better; curation quality dominates quantity.
+
+### 16.6 Reward Models in Multimodal Settings
+
+For image/video generation RL (Flow-GRPO, MixGRPO), scalar rewards come from multimodal reward models:
+
+**VideoReward** (arXiv:2501.13918): Multi-dimensional reward model trained on 182K annotated triplets across Visual Quality, Motion Quality, and Text Alignment. Used in Flow-DPO and as the online reward signal in HunyuanVideo 1.5.
+
+**PAVRM** (Process-Aware Video Reward Model, arXiv:2511.21541, Tencent): Evaluates video quality directly from **noisy latents** at intermediate denoising timesteps — no need to fully decode to pixel space. This eliminates the memory cost of decoding intermediate frames and enables process-level (per-denoising-step) reward feedback during MixGRPO training.
+
+**VLM-as-judge**: Several production pipelines (HunyuanVideo 1.5, Seedance 1.0) use a large VLM to score generated videos along multiple quality axes (text adherence, motion quality, visual aesthetics), then combine the scalar scores into a single training reward.
+
+---
+
+# Part VI: Training Infrastructure
+
+## 17. Training Infrastructure and Memory Requirements
+
+Understanding the memory footprint of each RL algorithm is essential for hardware planning. The following estimates are for bf16 (2 bytes per parameter) — the standard precision for LLM RL training.
+
+### 17.1 Memory Model
+
+For a model with $P$ parameters:
+- **Weights**: $2P$ bytes in bf16
+- **Optimizer states** (AdamW): $8P$ bytes (first and second moment + master weights in fp32)
+- **Activations** (during forward/backward): proportional to batch size × sequence length × hidden dim; highly variable
+
+A 7B parameter model: weights ≈ 14 GB; optimizer states ≈ 56 GB; total ≈ 70+ GB.
+
+### 17.2 Text RL: PPO vs GRPO vs GSPO
+
+| Component | PPO | GRPO | GSPO |
+|-----------|-----|------|------|
+| Actor $\pi_\theta$ (weights + optimizer) | $10P$ bytes | $10P$ bytes | $10P$ bytes |
+| Critic $V_\phi$ (weights + optimizer) | $10P$ bytes | **Eliminated** | **Eliminated** |
+| Reference model $\pi_\text{ref}$ (inference only) | $2P$ bytes | $2P$ bytes | $2P$ bytes |
+| Reward model (inference only) | $2P_{\text{RM}}$ bytes | $2P_{\text{RM}}$ bytes | $2P_{\text{RM}}$ bytes |
+| **Total (actor = RM size)** | **~24P** | **~14P** | **~14P** |
+
+**Concrete example — 7B parameter policy + 7B RM:**
+- PPO: ~336 GB (requires 4–5 × A100 80GB)
+- GRPO/GSPO: ~196 GB (requires 3 × A100 80GB)
+
+In practice, the actor and reference model can share memory with techniques like gradient checkpointing, and the RM is often smaller than the actor. But the rough 40% memory reduction from eliminating the critic (PPO → GRPO) is meaningful at scale.
+
+### 17.3 Image/Video RL: Flow-GRPO and MixGRPO
+
+Image generation RL has a different cost structure: the bottleneck is not the number of model copies but the number of denoising rollouts per gradient step.
+
+For a flow-matching model with $P_\text{diff}$ parameters (e.g., FLUX.1-dev ≈ 12B parameters, ~24 GB in bf16):
+
+| Cost factor | Value |
+|-------------|-------|
+| Model weights + optimizer | $10P_\text{diff}$ bytes ≈ 240 GB |
+| SDE rollout activations ($G$ images × $T$ steps) | $G \times T \times$ (latent size) |
+| Typical $G$ | 4–8 images per prompt |
+| Typical $T_\text{train}$ | 10 denoising steps (Flow-GRPO reduction) |
+| Typical GPU requirement | 4–8 × H100 80GB |
+
+**MixGRPO advantage:** By restricting SDE sampling to a window of $|W|$ steps (instead of all $T_\text{train}$ steps), only the activations for the window steps need to be stored for gradient computation. This reduces activation memory by a factor of $|W| / T_\text{train}$, enabling larger batch sizes or group sizes.
+
+### 17.4 Typical Hyperparameters
+
+| Hyperparameter | PPO (LLM) | GRPO/GSPO (LLM) | Flow-GRPO (Image) |
+|----------------|-----------|-----------------|-------------------|
+| Group size $G$ | 1 (single sample) | 8–16 | 4–8 |
+| Learning rate | 1e-6 – 5e-6 | 1e-6 – 5e-6 | 1e-7 – 5e-7 |
+| Clip $\varepsilon$ | 0.1 – 0.2 | 0.1 – 0.2 | 0.1 – 0.2 |
+| KL coefficient $\beta$ | 0.01 – 0.1 | 0.01 – 0.1 | 0.001 – 0.01 |
+| Training steps | 500 – 5000 | 500 – 5000 | 500 – 3000 |
+| Denoising steps $T_\text{train}$ | — | — | 10 (reduced) |
+| Rollouts per step | 1 | $G$ | $G \times T_\text{train}$ |
+
+**Why LR is lower for RL than SFT:** RL updates are noisier (policy gradient has high variance even after GRPO normalization) and irreversible in a way SFT updates are not — over-training with RL can destroy capabilities that SFT preserved. The combination of group normalization ($\hat{A}_i \in [-3, 3]$ roughly) and the clip constraint controls the effective update magnitude, but a conservative base LR is still essential.
+
+### 17.5 Practical Training Strategies
+
+**Cold start:** RL training from a raw base model is unstable. Standard practice is: pretrain → SFT (on curated demonstrations) → RL. The SFT stage provides a well-initialized policy that produces sensible outputs, giving the reward model meaningful signal to work with.
+
+**Reference model updates:** The reference model $\pi_\text{ref}$ is typically kept frozen throughout RL training. Some pipelines periodically update it to the current policy checkpoint (iterative RLHF), which relaxes the KL constraint over time and allows larger distribution shifts.
+
+**Reward normalization:** Group normalization in GRPO/GSPO ($\hat{A}_i = (r_i - \mu)/\sigma$) stabilizes training across different reward scales. For rule-based binary rewards (0/1), this means advantages are $+1/(G\sigma)$ for correct outputs and $-1/(G\sigma)$ for incorrect ones — automatically scaled.
+
+**Multi-reward training:** Production pipelines typically combine several reward signals (e.g., text alignment + visual quality + motion quality in HunyuanVideo 1.5). These are usually linearly combined with tuned weights: $R = w_1 r_1 + w_2 r_2 + \ldots + w_k r_k$, where weights are set by ablation or human evaluation.
+
+---
+
+*References: PPO (arXiv:1707.06347) | GAE (arXiv:1506.02438) | GRPO/DeepSeekMath (arXiv:2402.03300) | DAPO (arXiv:2503.14476) | GSPO (arXiv:2507.18071) | DDPO (arXiv:2305.13301) | Flow-GRPO (arXiv:2505.05470) | MixGRPO (arXiv:2507.21802) | DiffusionNFT (arXiv:2509.16117) | Flow-DPO/VideoReward (arXiv:2501.13918) | Let's Verify Step by Step (arXiv:2305.20050) | Math-Shepherd (arXiv:2312.08935) | RM Overoptimization Scaling Laws (arXiv:2210.10760) | Does RLHF Scale? (arXiv:2412.06000) | DeepSeek-GRM (arXiv:2504.02495) | GRPO is Secretly a PRM (arXiv:2509.21154) | GRPO Survey (arXiv:2603.06623)*
