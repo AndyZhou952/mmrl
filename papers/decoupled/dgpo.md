@@ -1,6 +1,6 @@
 # DGPO — Reinforcing Diffusion Models by Direct Group Preference Optimization
 
-> Notation: follows [NOTATION.md](../NOTATION.md) §6 (ELBO shorthand). Uses DDPM convention: $\epsilon_\theta$, but extends to flow matching. Positive group $\mathcal{G}^+$, negative group $\mathcal{G}^-$.
+> Notation: follows [NOTATION.md](../NOTATION.md) §6 (ELBO shorthand). Uses DDPM convention: $\epsilon_\theta$, but extends to flow matching. Positive group $\mathcal{G}^{+}$, negative group $\mathcal{G}^-$.
 
 | Field | Value |
 |---|---|
@@ -28,7 +28,7 @@ DGPO asks: **can we get group-level RL signal without a policy gradient at all?*
 - **Online**: generate a group of $N$ images per prompt each iteration using **any ODE sampler**.
 - **Reward**: $r(x_0^{(i)}, c) \in [0,1]$ for each generated image.
 - **Groups**: partition by advantage sign:
-  - $\mathcal{G}^+ = \{i : \hat A^{(i)} > 0\}$ (above-mean images)
+  - $\mathcal{G}^{+} = \{i : \hat A^{(i)} > 0\}$ (above-mean images)
   - $\mathcal{G}^- = \{i : \hat A^{(i)} \leq 0\}$ (below-mean images)
 
 ---
@@ -48,10 +48,10 @@ Same group-relative normalisation as GRPO:
 $$\hat A^{(i)} = \frac{r^{(i)} - \overline r}{\text{std}(\{r^{(j)}\}) + \delta}$$
 
 Positive/negative partition:
-$$\mathcal{G}^+ = \{i : \hat A^{(i)} > 0\}, \quad \mathcal{G}^- = \{i : \hat A^{(i)} \leq 0\}$$
+$$\mathcal{G}^{+} = \{i : \hat A^{(i)} > 0\}, \quad \mathcal{G}^- = \{i : \hat A^{(i)} \leq 0\}$$
 
-Sample weights (must satisfy $\sum_{i \in \mathcal{G}^+} w^+(i) = \sum_{j \in \mathcal{G}^-} w^-(j)$ to cancel the partition function):
-$$w^+(i) \propto |\hat A^{(i)}|, \quad w^-(j) \propto |\hat A^{(j)}|, \quad \text{renormalised}$$
+Sample weights (must satisfy $\sum_{i \in \mathcal{G}^{+}} w^{+}(i) = \sum_{j \in \mathcal{G}^-} w^-(j)$ to cancel the partition function):
+$$w^{+}(i) \propto |\hat A^{(i)}|, \quad w^-(j) \propto |\hat A^{(j)}|, \quad \text{renormalised}$$
 
 ---
 
@@ -60,30 +60,30 @@ $$w^+(i) \propto |\hat A^{(i)}|, \quad w^-(j) \propto |\hat A^{(j)}|, \quad \tex
 ### Step 1 — Log-ratio via ELBO
 
 The intractable marginal log-ratio decomposes via the ELBO (see [NOTATION.md §6](../NOTATION.md)):
-$$\log \frac{\pi_\theta(x_0 \mid c)}{\pi_{\theta_\text{ref}}(x_0 \mid c)} \approx -\mathbb{E}_t\!\left[\underbrace{\|\epsilon_\theta(x_t,t,c) - \epsilon\|^2}_{\mathcal{L}_\theta(x_0)} - \underbrace{\|\epsilon_{\theta_\text{ref}}(x_t,t,c) - \epsilon\|^2}_{\mathcal{L}_{\theta_\text{ref}}(x_0)}\right]$$
+$$\log \frac{\pi_\theta(x_0 \mid c)}{\pi_{\theta_\text{ref}}(x_0 \mid c)} \approx -\mathbb{E}_t\left[\underbrace{\Vert\epsilon_\theta(x_t,t,c) - \epsilon\Vert^2}_{\mathcal{L}_\theta(x_0)} - \underbrace{\Vert\epsilon_{\theta_\text{ref}}(x_t,t,c) - \epsilon\Vert^2}_{\mathcal{L}_{\theta_\text{ref}}(x_0)}\right]$$
 
 where $x_t = \sqrt{\bar\alpha_t}\, x_0 + \sigma_t\,\epsilon$ and the expectation is over $t$ and $\epsilon$.
 
 ### Step 2 — Group Bradley-Terry objective
 
 Model group preference with a Bradley-Terry log-likelihood:
-$$\max_\theta\; \mathbb{E}\!\left[\log \sigma\!\left(R_\theta(\mathcal{G}^+ \mid c) - R_\theta(\mathcal{G}^- \mid c)\right)\right]$$
+$$\max_\theta\; \mathbb{E}\left[\log \sigma\left(R_\theta(\mathcal{G}^{+} \mid c) - R_\theta(\mathcal{G}^- \mid c)\right)\right]$$
 
 where the group-level reward proxy is:
 $$R_\theta(\mathcal{G} \mid c) = \sum_{i \in \mathcal{G}} w(i) \cdot \log \frac{\pi_\theta(x_0^{(i)} \mid c)}{\pi_{\theta_\text{ref}}(x_0^{(i)} \mid c)}$$
 
-The partition function of the Bradley-Terry model cancels when $\sum_{\mathcal{G}^+} w^+(i) = \sum_{\mathcal{G}^-} w^-(j)$, giving a tractable objective.
+The partition function of the Bradley-Terry model cancels when $\sum_{\mathcal{G}^{+}} w^{+}(i) = \sum_{\mathcal{G}^-} w^-(j)$, giving a tractable objective.
 
 ### Step 3 — Substituting the ELBO
 
 Substituting the ELBO log-ratio:
 
 $$\boxed{
-\mathcal{L}_\text{DGPO}(\theta) = -\mathbb{E}_{t,\epsilon}\!\left[\log \sigma\!\left(\sum_{i \in \mathcal{G}^+} w^+(i)\,\Delta\mathcal{L}_i - \sum_{j \in \mathcal{G}^-} w^-(j)\,\Delta\mathcal{L}_j\right)\right]
+\mathcal{L}_\text{DGPO}(\theta) = -\mathbb{E}_{t,\epsilon}\left[\log \sigma\left(\sum_{i \in \mathcal{G}^{+}} w^{+}(i)\,\Delta\mathcal{L}_i - \sum_{j \in \mathcal{G}^-} w^-(j)\,\Delta\mathcal{L}_j\right)\right]
 }$$
 
 where:
-$$\Delta\mathcal{L}_i \triangleq \|\epsilon_{\theta_\text{ref}}(x_t^{(i)},t,c) - \epsilon^{(i)}\|^2 - \|\epsilon_\theta(x_t^{(i)},t,c) - \epsilon^{(i)}\|^2$$
+$$\Delta\mathcal{L}_i \triangleq \Vert\epsilon_{\theta_\text{ref}}(x_t^{(i)},t,c) - \epsilon^{(i)}\Vert^2 - \Vert\epsilon_\theta(x_t^{(i)},t,c) - \epsilon^{(i)}\Vert^2$$
 
 (positive when $\theta$ is better than $\theta_\text{ref}$ at denoising $x_0^{(i)}$).
 

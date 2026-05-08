@@ -53,7 +53,7 @@ Score approximation via noise prediction:
 $$\nabla \log p_t(\mathbf{z}_t) \approx -\epsilon_\theta(\mathbf{z}_t, t, c) / \sigma_t$$
 
 Euler-Maruyama discretisation gives a Gaussian step:
-$$\pi_\theta(\mathbf{z}_{t-1} \mid \mathbf{z}_t, c) = \mathcal{N}\!\left(\mathbf{z}_{t-1};\, \mu_\theta^\text{DDPM}(\mathbf{z}_t, t, c),\, \eta_t^2 g_t^2 \Delta t\, I\right)$$
+$$\pi_\theta(\mathbf{z}_{t-1} \mid \mathbf{z}_t, c) = \mathcal{N}\left(\mathbf{z}_{t-1};\, \mu_\theta^\text{DDPM}(\mathbf{z}_t, t, c),\, \eta_t^2 g_t^2 \Delta t\, I\right)$$
 
 ### B. Rectified flow — Reverse SDE
 
@@ -65,10 +65,10 @@ For the linear interpolation path $\mathbf{z}_t = (1-t)\mathbf{z}_0 + t\epsilon$
 $$\nabla \log p_t(\mathbf{z}_t) = \frac{\hat{\mathbf{z}}_0(\mathbf{z}_t,t) - \mathbf{z}_t}{t^2}, \quad \hat{\mathbf{z}}_0 = \mathbf{z}_t - t\,v_\theta(\mathbf{z}_t,t,c)$$
 
 Discretisation:
-$$\pi_\theta(\mathbf{z}_{t-\Delta t} \mid \mathbf{z}_t, c) = \mathcal{N}\!\left(\mathbf{z}_{t-\Delta t};\, \mu_\theta^\text{flow}(\mathbf{z}_t,t,c),\, \varepsilon_t^2\,\Delta t\, I\right)$$
+$$\pi_\theta(\mathbf{z}_{t-\Delta t} \mid \mathbf{z}_t, c) = \mathcal{N}\left(\mathbf{z}_{t-\Delta t};\, \mu_\theta^\text{flow}(\mathbf{z}_t,t,c),\, \varepsilon_t^2\,\Delta t\, I\right)$$
 
 Both cases yield tractable **Gaussian per-step likelihoods** with the same functional form, enabling a single unified importance ratio:
-$$\rho_{t}^{(i)} = \frac{\pi_\theta(\mathbf{z}_{t-1}^{(i)} \mid \mathbf{z}_t^{(i)}, c)}{\pi_{\theta_\text{old}}(\mathbf{z}_{t-1}^{(i)} \mid \mathbf{z}_t^{(i)}, c)} = \exp\!\left(-\frac{\|\mathbf{z}_{t-1}^{(i)} - \mu_\theta\|^2 - \|\mathbf{z}_{t-1}^{(i)} - \mu_{\theta_\text{old}}\|^2}{2\,\sigma_\text{SDE}^2}\right)$$
+$$\rho_{t}^{(i)} = \frac{\pi_\theta(\mathbf{z}_{t-1}^{(i)} \mid \mathbf{z}_t^{(i)}, c)}{\pi_{\theta_\text{old}}(\mathbf{z}_{t-1}^{(i)} \mid \mathbf{z}_t^{(i)}, c)} = \exp\left(-\frac{\Vert\mathbf{z}_{t-1}^{(i)} - \mu_\theta\Vert^2 - \Vert\mathbf{z}_{t-1}^{(i)} - \mu_{\theta_\text{old}}\Vert^2}{2\,\sigma_\text{SDE}^2}\right)$$
 
 ---
 
@@ -93,7 +93,7 @@ $$\hat A^{(i)} = \frac{r^{(i)} - \overline r}{\text{std}(\{r^{(j)}\}) + \delta}$
 PPO-clipped GRPO objective; DanceGRPO **subsamples** $\lceil \tau T \rceil$ timesteps (default $\tau = 0.6$) to reduce memory:
 
 $$\boxed{
-\mathcal{L}_\text{DanceGRPO}(\theta) = -\mathbb{E}\!\left[\frac{1}{N_g}\sum_{i=1}^{N_g} \frac{1}{\lceil\tau T\rceil}\sum_{t \in \mathcal{T}_\text{sub}} \min\!\left(\rho_t^{(i)}\hat A^{(i)},\; \text{clip}\!\left(\rho_t^{(i)}, 1{-}\epsilon, 1{+}\epsilon\right)\hat A^{(i)}\right)\right]
+\mathcal{L}_\text{DanceGRPO}(\theta) = -\mathbb{E}\left[\frac{1}{N_g}\sum_{i=1}^{N_g} \frac{1}{\lceil\tau T\rceil}\sum_{t \in \mathcal{T}_\text{sub}} \min\left(\rho_t^{(i)}\hat A^{(i)},\; \text{clip}\left(\rho_t^{(i)}, 1{-}\epsilon, 1{+}\epsilon\right)\hat A^{(i)}\right)\right]
 }$$
 
 where $\mathcal{T}_\text{sub}$ is the randomly-sampled subset of $\lceil\tau T\rceil$ timesteps.

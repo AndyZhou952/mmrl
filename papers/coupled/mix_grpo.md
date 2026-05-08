@@ -43,7 +43,7 @@ $$x_{t-\Delta t} = x_t - v_\theta(x_t, t, c)\,\Delta t$$
 $$x_{t-\Delta t} = x_t - v_\theta(x_t,t,c)\,\Delta t + \frac{\sigma_t^2\,\Delta t}{2t^2}(\hat x_0 - x_t) + \sigma_t\sqrt{\Delta t}\,\epsilon_t, \quad \epsilon_t \sim \mathcal{N}(0,I)$$
 
 where $\hat x_0 = x_t - t\,v_\theta(x_t,t,c)$. The transition inside the window is Gaussian:
-$$\pi_\theta(x_{t-\Delta t} \mid x_t, c) = \mathcal{N}\!\left(x_{t-\Delta t};\; \mu_\theta(x_t,t,c),\; \sigma_t^2\,\Delta t\, I\right), \quad t \in \mathcal{W}(l)$$
+$$\pi_\theta(x_{t-\Delta t} \mid x_t, c) = \mathcal{N}\left(x_{t-\Delta t};\; \mu_\theta(x_t,t,c),\; \sigma_t^2\,\Delta t\, I\right), \quad t \in \mathcal{W}(l)$$
 
 **Window sliding** (every $\tau$ training iterations):
 $$l \leftarrow \min(l + s,\; T - w)$$
@@ -63,11 +63,11 @@ Evaluate $r(x_0^{(i)}, c)$ at the terminal image. The ODE steps after the window
 GRPO-clip loss restricted to window steps only:
 
 $$\boxed{
-\mathcal{L}_\text{MixGRPO}(\theta) = -\mathbb{E}\!\left[\frac{1}{N_g}\sum_{i=1}^{N_g} \frac{1}{|\mathcal{W}|}\sum_{t \in \mathcal{W}(l)} \min\!\left(\rho_t^{(i)}\hat A^{(i)},\; \text{clip}\!\left(\rho_t^{(i)}, 1{-}\epsilon, 1{+}\epsilon\right)\hat A^{(i)}\right)\right]
+\mathcal{L}_\text{MixGRPO}(\theta) = -\mathbb{E}\left[\frac{1}{N_g}\sum_{i=1}^{N_g} \frac{1}{|\mathcal{W}|}\sum_{t \in \mathcal{W}(l)} \min\left(\rho_t^{(i)}\hat A^{(i)},\; \text{clip}\left(\rho_t^{(i)}, 1{-}\epsilon, 1{+}\epsilon\right)\hat A^{(i)}\right)\right]
 }$$
 
 Importance ratio (only window steps; ODE steps have $\rho_t = 1$ trivially):
-$$\rho_t^{(i)} = \frac{\pi_\theta(x_{t-\Delta t}^{(i)} \mid x_t^{(i)}, c)}{\pi_{\theta_\text{old}}(x_{t-\Delta t}^{(i)} \mid x_t^{(i)}, c)} = \exp\!\left(-\frac{\|x_{t-\Delta t}^{(i)} - \mu_\theta\|^2 - \|x_{t-\Delta t}^{(i)} - \mu_{\theta_\text{old}}\|^2}{2\,\sigma_t^2\,\Delta t}\right), \quad t \in \mathcal{W}(l)$$
+$$\rho_t^{(i)} = \frac{\pi_\theta(x_{t-\Delta t}^{(i)} \mid x_t^{(i)}, c)}{\pi_{\theta_\text{old}}(x_{t-\Delta t}^{(i)} \mid x_t^{(i)}, c)} = \exp\left(-\frac{\Vert x_{t-\Delta t}^{(i)} - \mu_\theta\Vert^2 - \Vert x_{t-\Delta t}^{(i)} - \mu_{\theta_\text{old}}\Vert^2}{2\,\sigma_t^2\,\Delta t}\right), \quad t \in \mathcal{W}(l)$$
 
 ---
 

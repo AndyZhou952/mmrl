@@ -49,10 +49,10 @@ No explicit reward model. Instead, the **preference dataset** encodes human judg
 ### Step 1 — Standard DPO for LLMs (motivation)
 
 For sequences (LLMs), DPO avoids explicit RL by optimising:
-$$\mathcal{L}_\text{DPO}^\text{LLM}(\theta) = -\mathbb{E}_{(c,y^w,y^l)}\!\left[\log \sigma\!\left(\beta \log \frac{\pi_\theta(y^w \mid c)}{\pi_\text{ref}(y^w \mid c)} - \beta \log \frac{\pi_\theta(y^l \mid c)}{\pi_\text{ref}(y^l \mid c)}\right)\right]$$
+$$\mathcal{L}_\text{DPO}^\text{LLM}(\theta) = -\mathbb{E}_{(c,y^w,y^l)}\left[\log \sigma\left(\beta \log \frac{\pi_\theta(y^w \mid c)}{\pi_\text{ref}(y^w \mid c)} - \beta \log \frac{\pi_\theta(y^l \mid c)}{\pi_\text{ref}(y^l \mid c)}\right)\right]$$
 
 This is a Bradley-Terry classification: the model assigns higher log-probability to the preferred response under a KL-regularised objective. The optimal solution satisfies:
-$$\log \frac{\pi^*(y \mid c)}{\pi_\text{ref}(y \mid c)} = \frac{1}{\beta} r^*(y, c) - \log Z(c)$$
+$$\log \frac{\pi^{\ast}(y \mid c)}{\pi_\text{ref}(y \mid c)} = \frac{1}{\beta} r^{\ast}(y, c) - \log Z(c)$$
 
 ### Step 2 — Problem: $\log p_\theta(x_0 \mid c)$ is intractable
 
@@ -61,27 +61,27 @@ For diffusion models, $p_\theta(x_0 \mid c) = \int p_\theta(x_{0:T} \mid c)\, dx
 ### Step 3 — ELBO lower bound
 
 Introduce latent variables $x_{1:T}$ and use the standard ELBO:
-$$\log p_\theta(x_0 \mid c) \geq \mathcal{E}_\theta(x_0, c) \triangleq \mathbb{E}_q\!\left[\sum_{t=1}^T \log \frac{p_\theta(x_{t-1} \mid x_t, c)}{q(x_{t-1} \mid x_t, x_0)}\right]$$
+$$\log p_\theta(x_0 \mid c) \geq \mathcal{E}_\theta(x_0, c) \triangleq \mathbb{E}_q\left[\sum_{t=1}^T \log \frac{p_\theta(x_{t-1} \mid x_t, c)}{q(x_{t-1} \mid x_t, x_0)}\right]$$
 
 where $q(x_t \mid x_0)$ is the forward noising process. This gives:
 $$\log \frac{p_\theta(x_0^w \mid c)}{p_\text{ref}(x_0^w \mid c)} \approx \mathcal{E}_\theta(x_0^w, c) - \mathcal{E}_{\theta_\text{ref}}(x_0^w, c)$$
 
 ### Step 4 — Denoising MSE form
 
-For a DDPM with Gaussian reverse steps, $\log p_\theta(x_{t-1} \mid x_t, c) = -\|x_{t-1} - \mu_\theta\|^2/(2\tilde\beta_t) + \text{const}$. The ELBO difference simplifies to:
+For a DDPM with Gaussian reverse steps, $\log p_\theta(x_{t-1} \mid x_t, c) = -\Vert x_{t-1} - \mu_\theta\Vert^2/(2\tilde\beta_t) + \text{const}$. The ELBO difference simplifies to:
 
-$$\mathcal{E}_\theta(x_0, c) - \mathcal{E}_{\theta_\text{ref}}(x_0, c) = -\mathbb{E}_t\!\left[\frac{T\,\omega(\lambda_t)}{2}\!\left(\|\epsilon_\theta(x_t,t,c) - \epsilon\|^2 - \|\epsilon_{\theta_\text{ref}}(x_t,t,c) - \epsilon\|^2\right)\right]$$
+$$\mathcal{E}_\theta(x_0, c) - \mathcal{E}_{\theta_\text{ref}}(x_0, c) = -\mathbb{E}_t\left[\frac{T\,\omega(\lambda_t)}{2}\left(\Vert\epsilon_\theta(x_t,t,c) - \epsilon\Vert^2 - \Vert\epsilon_{\theta_\text{ref}}(x_t,t,c) - \epsilon\Vert^2\right)\right]$$
 
 where $\omega(\lambda_t)$ is a signal-to-noise weighting, $x_t = \sqrt{\bar\alpha_t} x_0 + \sigma_t \epsilon$ is obtained by sampling $\epsilon$ and noising $x_0$.
 
 ### Step 5 — Final tractable Diffusion-DPO loss
 
 $$\boxed{
-\mathcal{L}_\text{Diff-DPO}(\theta) = -\mathbb{E}_{t,\epsilon}\!\left[\log \sigma\!\left(\beta T \omega(\lambda_t)\!\left[\Delta\mathcal{L}(x_0^w) - \Delta\mathcal{L}(x_0^l)\right]\right)\right]
+\mathcal{L}_\text{Diff-DPO}(\theta) = -\mathbb{E}_{t,\epsilon}\left[\log \sigma\left(\beta T \omega(\lambda_t)\left[\Delta\mathcal{L}(x_0^w) - \Delta\mathcal{L}(x_0^l)\right]\right)\right]
 }$$
 
 where:
-$$\Delta\mathcal{L}(x_0) \triangleq \|\epsilon_{\theta_\text{ref}}(x_t,t,c) - \epsilon\|^2 - \|\epsilon_\theta(x_t,t,c) - \epsilon\|^2$$
+$$\Delta\mathcal{L}(x_0) \triangleq \Vert\epsilon_{\theta_\text{ref}}(x_t,t,c) - \epsilon\Vert^2 - \Vert\epsilon_\theta(x_t,t,c) - \epsilon\Vert^2$$
 
 (positive when $\theta$ improves on $\theta_\text{ref}$ for this sample).
 
@@ -113,7 +113,7 @@ Repeat for each batch:
 ## Extension to flow matching
 
 For rectified-flow models (SD3, FLUX), replace the noise prediction MSE with the velocity prediction MSE:
-$$\Delta\mathcal{L}_\text{FM}(x_0) = \|v_{\theta_\text{ref}}(x_t,t,c) - u_t\|^2 - \|v_\theta(x_t,t,c) - u_t\|^2$$
+$$\Delta\mathcal{L}_\text{FM}(x_0) = \Vert v_{\theta_\text{ref}}(x_t,t,c) - u_t\Vert^2 - \Vert v_\theta(x_t,t,c) - u_t\Vert^2$$
 
 This is the "Flow-DPO" variant referenced in FlowGRPO ablations.
 

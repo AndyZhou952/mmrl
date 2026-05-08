@@ -135,7 +135,7 @@ Focuses exploration budget where it has most discriminative effect on reward.
 **Problem**: Standard GRPO for image-to-video (I2V) generation provides only trajectory-level scalar advantages; video quality depends on temporal alignment between frames, which scalar rewards poorly capture.
 
 **Approach**: **Contrastive trajectory alignment** in latent space. Within each group, high-advantage video latent trajectories are attracted toward each other; low-advantage trajectories are repelled from high-advantage ones:
-$$\mathcal{L}_\text{contrast}(\theta) = -\sum_{i \in \mathcal{G}^+}\sum_{j \in \mathcal{G}^-} \log \frac{\exp(d(\mathbf{z}^{(i)}, \mathbf{z}^{(j)}) / \tau)}{\sum_{k} \exp(d(\mathbf{z}^{(i)}, \mathbf{z}^{(k)}) / \tau)}$$
+$$\mathcal{L}_\text{contrast}(\theta) = -\sum_{i \in \mathcal{G}^{+}}\sum_{j \in \mathcal{G}^-} \log \frac{\exp(d(\mathbf{z}^{(i)}, \mathbf{z}^{(j)}) / \tau)}{\sum_{k} \exp(d(\mathbf{z}^{(i)}, \mathbf{z}^{(k)}) / \tau)}$$
 
 where $\mathbf{z}^{(i)} = \{x_{t_k}^{(i)}\}_{t_k \in T_\text{SDE}}$ is the latent trajectory and $d(\cdot,\cdot)$ is a trajectory similarity. Combined with GRPO loss and a memory bank for diversity.
 
@@ -159,7 +159,7 @@ $$\tilde r^{(i)} = r^{(i)} + \lambda_\Phi\,\Phi(x_0^{(i)}), \quad \Phi(x_0) = \m
 
 **Key contributions**:
 1. **ODE-based intermediate reward estimation**: at each step $t_k$, compute the Tweedie clean-image prediction $\hat x_0(x_{t_k})$ and evaluate the reward model on it as a proxy for step $t_k$'s contribution:
-$$r_{t_k}^{(i)} = R\!\left(\hat x_0(x_{t_k}^{(i)}),\, c\right), \quad \hat x_0 = x_t - t\,v_\theta(x_t,t,c)$$
+$$r_{t_k}^{(i)} = R\left(\hat x_0(x_{t_k}^{(i)}),\, c\right), \quad \hat x_0 = x_t - t\,v_\theta(x_t,t,c)$$
 2. **Reward-aware stochasticity calibration**: set the SDE noise coefficient $\sigma_{t_k}$ proportional to the expected reward gradient magnitude at step $t_k$, focusing exploration at high-impact steps.
 
 Step advantage:
@@ -175,7 +175,7 @@ $$\hat A_{t_k}^{(i)} = \frac{r_{t_k}^{(i)} - \overline r_{t_k}}{\text{std}(\{r_{
 
 **Approach**: Defines the pre-trained flow model as implicitly specifying a **video manifold** and enforces dual proximity constraints:
 - **Micro-constraint** (per step): the SDE noise is clipped so $x_{t-\Delta t}^\text{SDE}$ stays within $\delta_\text{micro}$ of the ODE trajectory $x_{t-\Delta t}^\text{ODE}$:
-$$\|x_{t-\Delta t}^\text{SDE} - x_{t-\Delta t}^\text{ODE}\|_2 \leq \delta_\text{micro}$$
+$$\Vert x_{t-\Delta t}^\text{SDE} - x_{t-\Delta t}^\text{ODE}\Vert_2 \leq \delta_\text{micro}$$
 - **Macro-constraint** (rollout level): terminal frames must pass a quality gate ($R(x_0) \geq \tau_\text{macro}$) before contributing to the gradient.
 
 Combined with FlowGRPO-style GRPO objective over the SDE window.
@@ -197,10 +197,10 @@ Papers that extend or diagnose the ELBO / solver-agnostic family.
 **Approach**: Frames diffusion alignment as **iterative EM**:
 - **E-step** (test-time search): find a set of diverse high-reward samples from the variational posterior $q(x_0) \propto r(x_0) \cdot \pi_{\theta_\text{old}}(x_0)$ via MCMC or rejection sampling.
 - **M-step** (amortisation): minimise **forward KL** (mode-covering) from $q$ into $\pi_\theta$:
-$$\mathcal{L}_\text{M}(\theta) = D_\text{KL}(q \| \pi_\theta) = -\mathbb{E}_{x_0 \sim q}[\log \pi_\theta(x_0)] + \text{const}$$
+$$\mathcal{L}_\text{M}(\theta) = D_\text{KL}(q \Vert \pi_\theta) = -\mathbb{E}_{x_0 \sim q}[\log \pi_\theta(x_0)] + \text{const}$$
 
 The forward KL is approximated via the ELBO (same trick as Diffusion-DPO):
-$$\mathcal{L}_\text{M}(\theta) \approx \mathbb{E}_{x_0 \sim q,\,t,\epsilon}\!\left[\|v_\theta(x_t,t,c) - u_t\|^2\right]$$
+$$\mathcal{L}_\text{M}(\theta) \approx \mathbb{E}_{x_0 \sim q,\,t,\epsilon}\left[\Vert v_\theta(x_t,t,c) - u_t\Vert^2\right]$$
 
 Works for both continuous (T2I) and discrete (DNA) domains without differentiable reward.
 
@@ -213,10 +213,10 @@ Works for both continuous (T2I) and discrete (DNA) domains without differentiabl
 **Problem**: RAFT-based methods (rejection sampling fine-tuning) shape only the terminal distribution $\pi(x_0)$; shaping at intermediate noise levels is theoretically suboptimal; no unified theory connects RAFT variants.
 
 **Approach**: Introduces the **GRAFT framework** (Generalised RAFT) showing that all RAFT variants implicitly minimise:
-$$\mathcal{L}_\text{GRAFT}(\theta) = D_\text{KL}(\tilde\pi \| \pi_\theta), \quad \tilde\pi(x_0) \propto \exp(R(x_0)/\beta)\,\pi_\text{ref}(x_0)$$
+$$\mathcal{L}_\text{GRAFT}(\theta) = D_\text{KL}(\tilde\pi \Vert \pi_\theta), \quad \tilde\pi(x_0) \propto \exp(R(x_0)/\beta)\,\pi_\text{ref}(x_0)$$
 
 **P-GRAFT** extends this by shaping intermediate distributions $\tilde\pi_t(x_t)$ at noise level $t$, not just at $t=0$:
-$$\mathcal{L}_\text{P-GRAFT}(\theta) = \sum_t \lambda_t\,D_\text{KL}(\tilde\pi_t \| \pi_\theta^t)$$
+$$\mathcal{L}_\text{P-GRAFT}(\theta) = \sum_t \lambda_t\,D_\text{KL}(\tilde\pi_t \Vert \pi_\theta^t)$$
 
 The bias-variance tradeoff is analysed: intermediate shaping has higher bias but lower variance than terminal-only shaping. Extended to flow model error correction.
 
@@ -230,7 +230,7 @@ The bias-variance tradeoff is analysed: intermediate shaping has higher bias but
 
 **Approach**:
 - **Critic**: trains a value function $V_\phi(x_t, t, c)$ on intermediate states via reward shaping for stable convergence:
-$$V_\phi(x_t,t,c) = \mathbb{E}_{x_0 | x_t}\!\left[R(x_0,c)\right]$$
+$$V_\phi(x_t,t,c) = \mathbb{E}_{x_0 | x_t}\left[R(x_0,c)\right]$$
 - **Wasserstein diversity regularisation**: penalises the 2-Wasserstein distance between the generated distribution and a reference in reward-weighted feature space:
 $$\mathcal{L}_\text{div}(\theta) = W_2(\pi_\theta,\,\pi_\text{ref})$$
 - **Dual stability**: advantage clipping + critic warm-up to prevent Q-value collapse in early training.
@@ -246,7 +246,7 @@ Actor update uses the intermediate advantage $\hat A_t^{(i)} = R^{(i)} - V_\phi(
 **Problem**: On-policy KL regularisation against a fixed reference policy is the primary cause of reward hacking (quality degradation, over-stylisation, diversity loss) in DDPO/FlowGRPO-style training. This is confirmed at scale (>1M GPU-hours of video generation training).
 
 **Approach**: Replace on-policy KL with **forward KL to an off-policy data distribution** $p_\text{data}$. The standard diffusion training loss is exactly the forward KL:
-$$\mathcal{L}_\text{diff}(\theta) = \mathbb{E}_{x_0 \sim p_\text{data},\,t,\epsilon}\!\left[\|v_\theta(x_t,t,c) - u_t\|^2\right] = D_\text{KL}(p_\text{data} \| \pi_\theta) + \text{const}$$
+$$\mathcal{L}_\text{diff}(\theta) = \mathbb{E}_{x_0 \sim p_\text{data},\,t,\epsilon}\left[\Vert v_\theta(x_t,t,c) - u_t\Vert^2\right] = D_\text{KL}(p_\text{data} \Vert \pi_\theta) + \text{const}$$
 
 Combined objective:
 $$\mathcal{L}_\text{DDRL}(\theta) = -\mathbb{E}_{x_0 \sim \pi_\theta}[R(x_0,c)] + \alpha\,\mathcal{L}_\text{diff}(\theta)$$
@@ -279,7 +279,7 @@ Policy gradient: $\nabla_\theta \mathcal{L} = \mathbb{E}[\nabla_\theta \log \pi_
 
 **Approach**:
 1. **Uncertainty-gated KL**: measure per-sample uncertainty $u^{(i)} = \text{Var}_{t,\epsilon}[\hat A^{(i)}(x_t)]$; apply KL penalty only where $u^{(i)} > u_\text{thresh}$:
-$$\mathcal{L}_\text{GARDO}(\theta) = \mathcal{L}_\text{GRPO}(\theta) - \beta\,\mathbb{E}\!\left[\mathbf{1}[u^{(i)} > u_\text{thresh}]\,D_\text{KL}(\pi_\theta(x_0)\|\pi_\text{ref}(x_0))\right]$$
+$$\mathcal{L}_\text{GARDO}(\theta) = \mathcal{L}_\text{GRPO}(\theta) - \beta\,\mathbb{E}\left[\mathbf{1}[u^{(i)} > u_\text{thresh}]\,D_\text{KL}(\pi_\theta(x_0)\Vert\pi_\text{ref}(x_0))\right]$$
 2. **Diversity-aware advantage shaping**: adds a novelty bonus to $\hat A^{(i)}$ for samples that differ from recently-generated images, encouraging exploration of new modes.
 
 Acts as a plug-in wrapper compatible with any base GRPO/ELBO algorithm.
@@ -293,9 +293,9 @@ Acts as a plug-in wrapper compatible with any base GRPO/ELBO algorithm.
 **Approach**: Frames diffusion alignment as **Sequential Monte Carlo (SMC)**: the denoising model is a proposal $\pi_\theta$; the reward-tilted distribution $\tilde\pi \propto R \cdot \pi_\text{ref}$ is the target; importance weights $w^{(i)} = \tilde\pi(x_0^{(i)})/\pi_\theta(x_0^{(i)})$ measure how well $\pi_\theta$ covers $\tilde\pi$.
 
 **VMPO objective**: minimise the variance of log importance weights:
-$$\mathcal{L}_\text{VMPO}(\theta) = \text{Var}_{x_0 \sim \pi_\theta}\!\left[\log\frac{\tilde\pi(x_0)}{\pi_\theta(x_0)}\right]$$
+$$\mathcal{L}_\text{VMPO}(\theta) = \text{Var}_{x_0 \sim \pi_\theta}\left[\log\frac{\tilde\pi(x_0)}{\pi_\theta(x_0)}\right]$$
 
-**Key theorem**: under on-policy sampling, $\nabla_\theta \mathcal{L}_\text{VMPO} = \nabla_\theta D_\text{KL}(\tilde\pi \| \pi_\theta)$, establishing equivalence with KL alignment on-policy. Off-policy, VMPO provides a correction term that reduces variance without mode-seeking bias.
+**Key theorem**: under on-policy sampling, $\nabla_\theta \mathcal{L}_\text{VMPO} = \nabla_\theta D_\text{KL}(\tilde\pi \Vert \pi_\theta)$, establishing equivalence with KL alignment on-policy. Off-policy, VMPO provides a correction term that reduces variance without mode-seeking bias.
 
 ---
 
@@ -307,9 +307,9 @@ $$\mathcal{L}_\text{VMPO}(\theta) = \text{Var}_{x_0 \sim \pi_\theta}\!\left[\log
 
 **Approach**: Decouples into two stages:
 1. **Surrogate reward learning** via DGPO-style group preference optimisation on deterministic ODE trajectories. For each prompt, generate a group of $N$ images $\{x_0^{(i)}\}$; the surrogate reward $\hat R_\psi$ is trained to predict group-relative rankings using the ELBO log-ratio as the policy model:
-$$\mathcal{L}_\text{surr}(\psi) = -\mathbb{E}\!\left[\log \sigma\!\left(\hat R_\psi(x_0^+) - \hat R_\psi(x_0^-)\right)\right]$$
+$$\mathcal{L}_\text{surr}(\psi) = -\mathbb{E}\left[\log \sigma\left(\hat R_\psi(x_0^{+}) - \hat R_\psi(x_0^-)\right)\right]$$
 2. **Generator training** guided by the surrogate:
-$$\mathcal{L}_\text{gen}(\theta) = -\mathbb{E}_{x_0 \sim \pi_\theta}\!\left[\hat R_\psi(x_0,c)\right] + \beta\,D_\text{KL}(\pi_\theta \| \pi_\text{ref})$$
+$$\mathcal{L}_\text{gen}(\theta) = -\mathbb{E}_{x_0 \sim \pi_\theta}\left[\hat R_\psi(x_0,c)\right] + \beta\,D_\text{KL}(\pi_\theta \Vert \pi_\text{ref})$$
 
 The key insight: ODE trajectory intermediate states $\{x_{t_k}\}$ provide unbiased, artifact-free intermediate value estimates (no SDE needed). Achieves GenEval 61% → 92% with only 4 denoising steps, surpassing the 40-step base model (63%) and GPT-4o (84%).
 

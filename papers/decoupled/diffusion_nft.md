@@ -60,14 +60,14 @@ The complement $(1 - r^{(i)})$ acts as the negative weight for the same image.
 
 Rather than explicitly sampling from a reward-weighted distribution, DiffusionNFT defines **implicit positive/negative velocity fields** as linear interpolations around $v_{\theta_\text{old}}$:
 
-$$v_\theta^+(x_t, t, c) = (1-\beta)\,v_{\theta_\text{old}}(x_t,t,c) + \beta\, v_\theta(x_t,t,c)$$
+$$v_\theta^{+}(x_t, t, c) = (1-\beta)\,v_{\theta_\text{old}}(x_t,t,c) + \beta\, v_\theta(x_t,t,c)$$
 $$v_\theta^-(x_t, t, c) = (1+\beta)\,v_{\theta_\text{old}}(x_t,t,c) - \beta\, v_\theta(x_t,t,c)$$
 
 **Intuition**:
-- $v_\theta^+$ moves in the direction of the current update ($\theta - \theta_\text{old}$) — it represents the "improved" policy.
+- $v_\theta^{+}$ moves in the direction of the current update ($\theta - \theta_\text{old}$) — it represents the "improved" policy.
 - $v_\theta^-$ moves in the *opposite* direction — it represents the "degraded" policy.
 
-These are proxies for $\pi^+(x_0|c) \propto r \cdot \pi_{\theta_\text{old}}(x_0|c)$ and $\pi^-(x_0|c) \propto (1-r) \cdot \pi_{\theta_\text{old}}(x_0|c)$, respectively.
+These are proxies for $\pi^{+}(x_0|c) \propto r \cdot \pi_{\theta_\text{old}}(x_0|c)$ and $\pi^-(x_0|c) \propto (1-r) \cdot \pi_{\theta_\text{old}}(x_0|c)$, respectively.
 
 ### Step 2 — Forward-noised training targets
 
@@ -80,13 +80,13 @@ $$u_t^{(i)} = x_0^{(i)} - \epsilon^{(i)}$$
 ### Step 3 — Contrastive flow matching loss
 
 $$\boxed{
-\mathcal{L}_\text{NFT}(\theta) = \mathbb{E}_{t,\epsilon}\!\left[\frac{1}{N}\sum_{i=1}^N \left(r^{(i)}\,\left\|v_\theta^+(x_t^{(i)},t,c) - u_t^{(i)}\right\|^2 + (1{-}r^{(i)})\,\left\|v_\theta^-(x_t^{(i)},t,c) - u_t^{(i)}\right\|^2\right)\right]
+\mathcal{L}_\text{NFT}(\theta) = \mathbb{E}_{t,\epsilon}\left[\frac{1}{N}\sum_{i=1}^N \left(r^{(i)}\,\left\Vert v_\theta^{+}(x_t^{(i)},t,c) - u_t^{(i)}\right\Vert^2 + (1{-}r^{(i)})\,\left\Vert v_\theta^-(x_t^{(i)},t,c) - u_t^{(i)}\right\Vert^2\right)\right]
 }$$
 
 Substituting the implicit policy definitions:
-$$= \mathbb{E}\!\left[\sum_i \left(r^{(i)}\,\|(1{-}\beta)v_\text{old} + \beta v_\theta - u_t^{(i)}\|^2 + (1{-}r^{(i)})\,\|(1{+}\beta)v_\text{old} - \beta v_\theta - u_t^{(i)}\|^2\right)\right]$$
+$$= \mathbb{E}\left[\sum_i \left(r^{(i)}\,\Vert(1{-}\beta)v_\text{old} + \beta v_\theta - u_t^{(i)}\Vert^2 + (1{-}r^{(i)})\,\Vert(1{+}\beta)v_\text{old} - \beta v_\theta - u_t^{(i)}\Vert^2\right)\right]$$
 
-**Why this works**: minimising over $v_\theta$ pushes $v_\theta^+$ toward the target for *high*-reward images and $v_\theta^-$ toward the target for *low*-reward images. Because $v_\theta^+$ is a positive perturbation of $v_\text{old}$ and $v_\theta^-$ is a negative perturbation, training jointly causes $v_\theta$ to deviate from $v_\text{old}$ in the direction that increases reward.
+**Why this works**: minimising over $v_\theta$ pushes $v_\theta^{+}$ toward the target for *high*-reward images and $v_\theta^-$ toward the target for *low*-reward images. Because $v_\theta^{+}$ is a positive perturbation of $v_\text{old}$ and $v_\theta^-$ is a negative perturbation, training jointly causes $v_\theta$ to deviate from $v_\text{old}$ in the direction that increases reward.
 
 **Connection to pretraining**: when all $r^{(i)} = 0.5$ (uniform reward), the loss reduces to a symmetric regression toward $u_t$ with both implicit policies averaging back to $v_\text{old}$ — equivalent to the pretraining flow matching loss. RL signal enters only through asymmetric $r^{(i)}$ values.
 

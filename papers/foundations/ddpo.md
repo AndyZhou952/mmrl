@@ -54,18 +54,18 @@ Given $x_0$ and prompt $c$, any scalar reward model $r : \mathbb{R}^d \times \ma
 
 Unbiased but high-variance. Backprop through $\log \pi_\theta$ at every denoising step:
 
-$$\mathcal{L}_\text{SF}(\theta) = -\mathbb{E}_{c, x_T, \{x_{t-1}\}}\!\left[\sum_{t=1}^{T} \log \pi_\theta(x_{t-1} \mid x_t, c) \cdot r(x_0, c)\right]$$
+$$\mathcal{L}_\text{SF}(\theta) = -\mathbb{E}_{c, x_T, \{x_{t-1}\}}\left[\sum_{t=1}^{T} \log \pi_\theta(x_{t-1} \mid x_t, c) \cdot r(x_0, c)\right]$$
 
-Since $\tilde\beta_t$ is fixed, $\log \pi_\theta(x_{t-1} \mid x_t, c) \propto -\|x_{t-1} - \mu_\theta(x_t,t,c)\|^2 / (2\tilde\beta_t)$, giving an MSE-like per-step gradient.
+Since $\tilde\beta_t$ is fixed, $\log \pi_\theta(x_{t-1} \mid x_t, c) \propto -\Vert x_{t-1} - \mu_\theta(x_t,t,c)\Vert^2 / (2\tilde\beta_t)$, giving an MSE-like per-step gradient.
 
 ### DDPO$_\text{IS}$ — Importance-sampling PPO (recommended)
 
 Collect a trajectory with frozen $\theta_\text{old}$, then run $K$ gradient steps reusing the same data:
 
-$$\mathcal{L}_\text{IS}(\theta) = -\mathbb{E}\!\left[\sum_{t=1}^{T} \rho_t \cdot r(x_0, c)\right], \quad \rho_t = \frac{\pi_\theta(x_{t-1} \mid x_t, c)}{\pi_{\theta_\text{old}}(x_{t-1} \mid x_t, c)}$$
+$$\mathcal{L}_\text{IS}(\theta) = -\mathbb{E}\left[\sum_{t=1}^{T} \rho_t \cdot r(x_0, c)\right], \quad \rho_t = \frac{\pi_\theta(x_{t-1} \mid x_t, c)}{\pi_{\theta_\text{old}}(x_{t-1} \mid x_t, c)}$$
 
 The IS ratio is tractable because each step is Gaussian:
-$$\log \rho_t = \frac{\|x_{t-1} - \mu_{\theta_\text{old}}\|^2 - \|x_{t-1} - \mu_\theta\|^2}{2\tilde\beta_t}$$
+$$\log \rho_t = \frac{\Vert x_{t-1} - \mu_{\theta_\text{old}}\Vert^2 - \Vert x_{t-1} - \mu_\theta\Vert^2}{2\tilde\beta_t}$$
 
 A clipped variant (analogous to PPO) applies $\text{clip}(\rho_t, 1-\epsilon, 1+\epsilon)$ to bound the update.
 
@@ -73,7 +73,7 @@ A clipped variant (analogous to PPO) applies $\text{clip}(\rho_t, 1-\epsilon, 1+
 
 ### KL regularisation (optional)
 
-$$\mathcal{L}_\text{KL}(\theta) = \beta\, \mathbb{E}\!\left[\sum_{t=1}^T D_\text{KL}\!\left(\pi_\theta(\cdot \mid x_t, c) \,\|\, \pi_\text{ref}(\cdot \mid x_t, c)\right)\right]$$
+$$\mathcal{L}_\text{KL}(\theta) = \beta\, \mathbb{E}\left[\sum_{t=1}^T D_\text{KL}\left(\pi_\theta(\cdot \mid x_t, c) \,\Vert\, \pi_\text{ref}(\cdot \mid x_t, c)\right)\right]$$
 
 ---
 

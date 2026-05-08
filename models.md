@@ -27,7 +27,7 @@ Links to algorithm notes in this repo use relative paths (e.g. `papers/coupled/f
 | [Wan 2.1](#wan-21--wan-22) | Alibaba | 2025-03 | T2V | not disclosed |
 | [Wan 2.2](#wan-21--wan-22) | Alibaba | 2025-07 | T2V, I2V | RLHF (not disclosed) |
 | [Seedream 4.0](#seedream-40) | ByteDance | 2025-09 | T2I + editing | RLHF (not disclosed) |
-| [HunyuanImage 3.0](#hunyuanimage-30) | Tencent | 2025-09 | T2I | DPO + MixGRPO + SRPO† + ReDA† |
+| [HunyuanImage 3.0](#hunyuanimage-30) | Tencent | 2025-09 | T2I | DPO + MixGRPO + SRPO + ReDA† |
 | [Qwen-Image](#qwen-image) | Alibaba | 2025-08 | T2I + editing | DPO + GRPO |
 | [Kling-Omni](#kling-omni) | Kuaishou | 2025-12 | T2V, I2V | DPO |
 | [InternVL3.5](#internvl35) | Shanghai AI Lab | 2025-08 | VLM | MPO (offline) + GSPO (online) |
@@ -181,12 +181,12 @@ The most detailed public post-training pipeline of any T2I model to date. Five s
 | 1. SFT | — | Diverse high-quality images, progressive quality increase |
 | 2. DPO | **Diffusion-DPO** [decoupled] | Suppress structural defects; pairs: high-quality vs. distorted |
 | 3. MixGRPO | **MixGRPO** [coupled] | Aesthetic optimization; hybrid ODE-SDE sliding-window GRPO |
-| 4. SRPO† | **SRPO (in-house)** | Contrastive text-semantic alignment: push images toward positive descriptions |
+| 4. SRPO | **SRPO** [decoupled] | Semantic relative alignment: push images toward positive text descriptions |
 | 5. ReDA† | **ReDA (in-house)** | Reward distribution alignment: minimize divergence from high-reward distribution |
 
 **Algorithm notes:**
 - **MixGRPO**: the same algorithm as `papers/coupled/mix_grpo.md` — Tencent developed MixGRPO (arXiv 2507.21802) and applied it here.
-- **SRPO (in-house)**: called "SRPO" in the tech report but is a **different algorithm** from the academic SRPO (arXiv 2310.07297). The in-house version is described as a "gradient-guided online reinforcement training strategy that injects noise directly into latent space features and uses differentiable reward signals." Not the same as the offline-RL robotics SRPO in `papers/foundations/srpo.md`.
+- **SRPO**: the Tencent algorithm described in arXiv [2509.06942](https://arxiv.org/abs/2509.06942) — see `papers/decoupled/srpo.md`. Injects a fixed noise prior into any timestep, recovers the clean image in one closed-form step, and scores with a semantic relative reward (positive vs. negative text condition difference). Decoupled; no SDE or multi-step denoising gradients required.
 - **ReDA**: see [New algorithms](#new-rl-algorithms-not-yet-in-this-repo).
 
 ---
@@ -282,22 +282,7 @@ These algorithms appear in industry model training pipelines but have no separat
 
 **Key difference from DPO**: DPO compares individual pairs (preferred vs. dispreferred). ReDA compares the entire output distribution against a target distribution of high-quality images, making it closer to distribution matching / imitation learning than contrastive preference learning.
 
-**Status**: Used as the final refinement stage in HunyuanImage 3.0 after MixGRPO and in-house SRPO. The model achieves #1 on LMArena T2I leaderboard. No ablation comparing ReDA to alternatives is publicly available.
-
----
-
-### SRPO (in-house, Tencent) — ⚠ name collision
-
-| Field | Value |
-|---|---|
-| **Proposed by** | Tencent (HunyuanImage 3.0 team) |
-| **First appearance** | HunyuanImage 3.0 tech report ([2509.23951](https://arxiv.org/abs/2509.23951)), Sep 2025 |
-| **Separate paper** | None |
-| **Paradigm** | Coupled (injects noise into latent space, uses SDE-style denoising steps for optimization) |
-
-⚠ **Name collision**: this is NOT the same as the academic SRPO paper (arXiv [2310.07297](https://arxiv.org/abs/2310.07297) — "Score Regularized Policy Optimization through Diffusion Behavior"), which targets offline RL for robotics. The Tencent in-house SRPO is described as "a gradient-guided online reinforcement training strategy that injects noise into latent space features, selects early denoising intervals for optimization, and uses differentiable reward signals" to align generated images with text semantics.
-
-The similarity to the academic SRPO is that both leverage gradient signals through the diffusion score function, but the Tencent variant is online, targets image-text alignment, and uses injected noise rather than a pretrained behavior model.
+**Status**: Used as the final refinement stage in HunyuanImage 3.0 after MixGRPO and SRPO. The model achieves #1 on LMArena T2I leaderboard. No ablation comparing ReDA to alternatives is publicly available.
 
 ---
 

@@ -45,10 +45,10 @@ $$y_k^{(i)} \sim \pi_\theta^\text{txt}(\cdot \mid c,\, y_{<k}^{(i)})$$
 
 Each reasoning chain $y^{(i)}$ conditions the flow model. The SDE is applied only over the window $T_\text{SDE}$ (following MixGRPO / FlowGRPO-Fast); ODE steps outside the window use no-gradient fast sampling:
 
-$$\Delta x_{t_k} = \left[v_\theta(x_{t_k},t_k,c,y^{(i)}) + \frac{\sigma_{t_k}^2}{2t_k^2}\!\left(x_{t_k} + (1-t_k)v_\theta\right)\right]\Delta t + \sigma_{t_k}\sqrt{\Delta t}\,\epsilon$$
+$$\Delta x_{t_k} = \left[v_\theta(x_{t_k},t_k,c,y^{(i)}) + \frac{\sigma_{t_k}^2}{2t_k^2}\left(x_{t_k} + (1-t_k)v_\theta\right)\right]\Delta t + \sigma_{t_k}\sqrt{\Delta t}\,\epsilon$$
 
 for $t_k \in T_\text{SDE}$; pure ODE elsewhere. The Gaussian transition for window steps:
-$$\pi_\theta^\text{img}(x_{t_k-\Delta t} \mid x_{t_k}, c, y^{(i)}) = \mathcal{N}\!\left(x_{t_k-\Delta t};\,\mu_\theta(x_{t_k},t_k,c,y^{(i)}),\,\sigma_{t_k}^2\Delta t\,I\right)$$
+$$\pi_\theta^\text{img}(x_{t_k-\Delta t} \mid x_{t_k}, c, y^{(i)}) = \mathcal{N}\left(x_{t_k-\Delta t};\,\mu_\theta(x_{t_k},t_k,c,y^{(i)}),\,\sigma_{t_k}^2\Delta t\,I\right)$$
 
 ---
 
@@ -65,29 +65,29 @@ $$\hat A^{(i)} = \frac{R^{(i)} - \overline R}{\text{std}(\{R^{(j)}\}) + \delta}$
 
 Standard GRPO-clip applied token-by-token over the reasoning chain:
 
-$$J_\text{Text}(\theta) = \frac{1}{G}\sum_{i=1}^G \frac{1}{|y^{(i)}|}\sum_k \left[\min\!\left(r_{i,k}^{\text{txt}}\hat A^{(i)},\;\text{clip}(r_{i,k}^{\text{txt}}, 1{-}\epsilon, 1{+}\epsilon)\hat A^{(i)}\right) - \beta_\text{txt}\,D_\text{KL}(\pi_\theta^\text{txt}\|\pi_\text{ref}^\text{txt})\right]$$
+$$J_\text{Text}(\theta) = \frac{1}{G}\sum_{i=1}^G \frac{1}{|y^{(i)}|}\sum_k \left[\min\left(r_{i,k}^{\text{txt}}\hat A^{(i)},\;\text{clip}(r_{i,k}^{\text{txt}}, 1{-}\epsilon, 1{+}\epsilon)\hat A^{(i)}\right) - \beta_\text{txt}\,D_\text{KL}(\pi_\theta^\text{txt}\Vert\pi_\text{ref}^\text{txt})\right]$$
 
 where $r_{i,k}^\text{txt} = \pi_\theta^\text{txt}(y_k^{(i)} \mid \cdot) / \pi_{\theta_\text{old}}^\text{txt}(y_k^{(i)} \mid \cdot)$ is the per-token importance ratio.
 
 ### Image objective with RatioNorm
 
 Raw importance ratio for SDE steps (same formula as FlowGRPO):
-$$\log r_{t_k}^{(i)} = -\frac{\|x_{t_k-\Delta t}^{(i)} - \mu_\theta\|^2 - \|x_{t_k-\Delta t}^{(i)} - \mu_{\theta_\text{old}}\|^2}{2\sigma_{t_k}^2\Delta t}$$
+$$\log r_{t_k}^{(i)} = -\frac{\Vert x_{t_k-\Delta t}^{(i)} - \mu_\theta\Vert^2 - \Vert x_{t_k-\Delta t}^{(i)} - \mu_{\theta_\text{old}}\Vert^2}{2\sigma_{t_k}^2\Delta t}$$
 
 **RatioNorm** (see [GRPO-Guard](grpo_guard.md)) standardises the per-timestep distribution:
-$$\log \tilde r_{t_k}^{(i)} = \sigma_{t_k}\sqrt{\Delta t}\!\left(\log r_{t_k}^{(i)} + \frac{\|\Delta\mu_{t_k}\|^2}{2\sigma_{t_k}^2\Delta t}\right) = -\Delta\mu_{t_k} \cdot \epsilon_{t_k}$$
+$$\log \tilde r_{t_k}^{(i)} = \sigma_{t_k}\sqrt{\Delta t}\left(\log r_{t_k}^{(i)} + \frac{\Vert\Delta\mu_{t_k}\Vert^2}{2\sigma_{t_k}^2\Delta t}\right) = -\Delta\mu_{t_k} \cdot \epsilon_{t_k}$$
 
 This restores $\mathbb{E}[\log\tilde r_{t_k}] \approx 0$, $\text{std}(\log\tilde r_{t_k}) \approx 1$, making the PPO clip band $[1-\epsilon, 1+\epsilon]$ effective.
 
 The image objective (restricted to $T_\text{SDE}$):
 
-$$J_\text{Flow}(\theta) = \frac{1}{G}\sum_{i=1}^G \frac{1}{|T_\text{SDE}|}\sum_{t_k \in T_\text{SDE}} \left[\min\!\left(\tilde r_{t_k}^{(i)}\hat A^{(i)},\;\text{clip}(\tilde r_{t_k}^{(i)}, 1{-}\epsilon, 1{+}\epsilon)\hat A^{(i)}\right) - \beta_\text{img}\,D_\text{KL}(\pi_\theta^\text{img}\|\pi_\text{ref}^\text{img})\right]$$
+$$J_\text{Flow}(\theta) = \frac{1}{G}\sum_{i=1}^G \frac{1}{|T_\text{SDE}|}\sum_{t_k \in T_\text{SDE}} \left[\min\left(\tilde r_{t_k}^{(i)}\hat A^{(i)},\;\text{clip}(\tilde r_{t_k}^{(i)}, 1{-}\epsilon, 1{+}\epsilon)\hat A^{(i)}\right) - \beta_\text{img}\,D_\text{KL}(\pi_\theta^\text{img}\Vert\pi_\text{ref}^\text{img})\right]$$
 
 ### Velocity-space regularisation
 
 Standard latent-space KL is insufficient because it does not penalise velocity-field drift directly. UniGRPO adds an MSE between the current and reference velocity fields, evaluated at forward-noised window states:
 
-$$\mathcal{L}_\text{MSE}(\theta) = \mathbb{E}_{t_k \in T_\text{SDE},\,i}\!\left[\left\|v_\theta(x_{t_k}^{(i)},t_k,c,y^{(i)}) - v_{\theta_\text{ref}}(x_{t_k}^{(i)},t_k,c,y^{(i)})\right\|^2\right]$$
+$$\mathcal{L}_\text{MSE}(\theta) = \mathbb{E}_{t_k \in T_\text{SDE},\,i}\left[\left\Vert v_\theta(x_{t_k}^{(i)},t_k,c,y^{(i)}) - v_{\theta_\text{ref}}(x_{t_k}^{(i)},t_k,c,y^{(i)})\right\Vert^2\right]$$
 
 ### Combined objective
 

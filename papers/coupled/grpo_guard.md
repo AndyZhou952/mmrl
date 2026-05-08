@@ -26,7 +26,7 @@ Consequence: the clip band $[1-\epsilon, 1+\epsilon]$ is effectively inactive fo
 ## Diagnosing the failure
 
 For a Gaussian policy $\pi_\theta(x_{t-\Delta t} \mid x_t) = \mathcal{N}(\mu_\theta, \sigma_t^2\Delta t\, I)$, the log-ratio is:
-$$\log \rho_t^{(i)} = \frac{\|x_{t-\Delta t}^{(i)} - \mu_{\theta_\text{old}}\|^2 - \|x_{t-\Delta t}^{(i)} - \mu_\theta\|^2}{2\,\sigma_t^2\,\Delta t} = \frac{(\mu_\theta - \mu_{\theta_\text{old}}) \cdot \Delta\mu_t}{{\sigma_t^2\,\Delta t}}$$
+$$\log \rho_t^{(i)} = \frac{\Vert x_{t-\Delta t}^{(i)} - \mu_{\theta_\text{old}}\Vert^2 - \Vert x_{t-\Delta t}^{(i)} - \mu_\theta\Vert^2}{2\,\sigma_t^2\,\Delta t} = \frac{(\mu_\theta - \mu_{\theta_\text{old}}) \cdot \Delta\mu_t}{{\sigma_t^2\,\Delta t}}$$
 
 where $\Delta\mu_t = \mu_\theta - \mu_{\theta_\text{old}}$. The magnitude depends on $\sigma_t$ — steps with small $\sigma_t$ (late denoising) produce large log-ratios, while steps with large $\sigma_t$ (early denoising) produce small ones. This imbalance is the root cause.
 
@@ -39,7 +39,7 @@ Replace the raw log importance ratio with a **standardised** version that has ze
 $$\log \hat\rho_t^{(i)} = \frac{\log \rho_t^{(i)} - \mathbb{E}_i[\log \rho_t^{(i)}]}{\text{std}_i(\log \rho_t^{(i)}) + \delta} + 0$$
 
 Equivalently, in the paper's formulation using the Gaussian structure:
-$$\log \hat\rho_t = \sigma_t\sqrt{\Delta t}\!\left(\log \rho_t + \frac{\|\Delta\mu_t\|^2}{2\sigma_t^2\Delta t}\right) = -\Delta\mu_t \cdot \epsilon_t$$
+$$\log \hat\rho_t = \sigma_t\sqrt{\Delta t}\left(\log \rho_t + \frac{\Vert\Delta\mu_t\Vert^2}{2\sigma_t^2\Delta t}\right) = -\Delta\mu_t \cdot \epsilon_t$$
 
 where $\epsilon_t$ is the noise used at that step. This form removes the timestep-dependent scale factor $1/(\sigma_t^2\Delta t)$ and replaces it with a unit-scale projection onto the noise direction.
 
@@ -63,7 +63,7 @@ This normalises gradient contributions so that each timestep contributes roughly
 ## Training objective
 
 $$\boxed{
-\mathcal{L}_\text{GRPO-Guard}(\theta) = -\mathbb{E}\!\left[\frac{1}{N_g}\sum_{i=1}^{N_g} \frac{1}{T}\sum_{t=1}^T \delta_t \cdot \min\!\left(\hat\rho_t^{(i)}\hat A^{(i)},\;\text{clip}\!\left(\hat\rho_t^{(i)}, 1{-}\epsilon, 1{+}\epsilon\right)\hat A^{(i)}\right)\right]
+\mathcal{L}_\text{GRPO-Guard}(\theta) = -\mathbb{E}\left[\frac{1}{N_g}\sum_{i=1}^{N_g} \frac{1}{T}\sum_{t=1}^T \delta_t \cdot \min\left(\hat\rho_t^{(i)}\hat A^{(i)},\;\text{clip}\left(\hat\rho_t^{(i)}, 1{-}\epsilon, 1{+}\epsilon\right)\hat A^{(i)}\right)\right]
 }$$
 
 Compared to plain FlowGRPO/DanceGRPO:

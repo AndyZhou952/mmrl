@@ -42,17 +42,17 @@ No SDE required at any stage. The clean $x_0^{(i)}$ produced by the ODE is used 
 
 For a Gaussian diffusion/flow model, the DDPO policy gradient update at timestep $t$ is equivalent to:
 
-$$\nabla_\theta \mathcal{L}_\text{DDPO} \propto r \cdot \nabla_\theta \left\|v_\theta(x_t, t, c) - \underbrace{(x_{t-1} - \epsilon)}_{\text{noisy target}}\right\|^2$$
+$$\nabla_\theta \mathcal{L}_\text{DDPO} \propto r \cdot \nabla_\theta \left\Vert v_\theta(x_t, t, c) - \underbrace{(x_{t-1} - \epsilon)}_{\text{noisy target}}\right\Vert^2$$
 
 where $x_{t-1}$ is a *stochastic* sample from the policy at step $t-1$.
 
 **Compare to the pretraining loss** (flow matching), which uses the **clean** target:
-$$\mathcal{L}_\text{FM}(\theta) = \mathbb{E}_{t,\epsilon,x_0}\!\left[\|v_\theta(x_t, t, c) - \underbrace{(x_0 - \epsilon)}_{u_t,\,\text{clean target}}\|^2\right]$$
+$$\mathcal{L}_\text{FM}(\theta) = \mathbb{E}_{t,\epsilon,x_0}\left[\Vert v_\theta(x_t, t, c) - \underbrace{(x_0 - \epsilon)}_{u_t,\,\text{clean target}}\Vert^2\right]$$
 
 The gap:
 $$\underbrace{x_{t-1} - \epsilon}_\text{DDPO noisy target} = \underbrace{x_0 - \epsilon}_{u_t} + \underbrace{(x_{t-1} - x_0)}_\text{noise residual}$$
 
-The noise residual $(x_{t-1} - x_0)$ has variance $\propto (1-t)^2 \|\Delta v_\theta\|^2$, which is **non-zero** whenever the model prediction deviates from the data manifold. This variance inflates gradients and causes instability.
+The noise residual $(x_{t-1} - x_0)$ has variance $\propto (1-t)^2 \Vert\Delta v_\theta\Vert^2$, which is **non-zero** whenever the model prediction deviates from the data manifold. This variance inflates gradients and causes instability.
 
 ---
 
@@ -72,7 +72,7 @@ where the group contains all $N$ images generated for the same prompt $c$.
 Replace the noisy DDPO target with the clean velocity target $u_t = x_0 - \epsilon$, weighted by advantage:
 
 $$\boxed{
-\mathcal{L}_\text{AWM}(\theta) = \mathbb{E}_{t,\epsilon}\!\left[\frac{1}{N}\sum_{i=1}^N w(t)\,\hat A^{(i)}\,\left\|v_\theta(x_t^{(i)}, t, c) - u_t^{(i)}\right\|^2\right]
+\mathcal{L}_\text{AWM}(\theta) = \mathbb{E}_{t,\epsilon}\left[\frac{1}{N}\sum_{i=1}^N w(t)\,\hat A^{(i)}\,\left\Vert v_\theta(x_t^{(i)}, t, c) - u_t^{(i)}\right\Vert^2\right]
 }$$
 
 where:
@@ -95,14 +95,14 @@ In LLMs, pretraining and RLHF share the same cross-entropy objective:
 $$\mathcal{L}_\text{SFT} = -\mathbb{E}[\log \pi(y|x)], \quad \mathcal{L}_\text{PPO} = -\mathbb{E}[\hat A \cdot \log \pi(y|x)]$$
 
 AWM establishes the **exact analogue for diffusion models**:
-$$\mathcal{L}_\text{FM} = \mathbb{E}[\|v_\theta - u_t\|^2], \quad \mathcal{L}_\text{AWM} = \mathbb{E}[\hat A \cdot \|v_\theta - u_t\|^2]$$
+$$\mathcal{L}_\text{FM} = \mathbb{E}[\Vert v_\theta - u_t\Vert^2], \quad \mathcal{L}_\text{AWM} = \mathbb{E}[\hat A \cdot \Vert v_\theta - u_t\Vert^2]$$
 
 The only difference is the advantage weighting — the base objective is identical. This means AWM post-training is maximally compatible with the pretraining optimiser, learning rate schedule, and batch size.
 
 ### Connection to AWR
 
 Advantage-Weighted Regression (AWR, Peng et al. 2019) in offline RL:
-$$\mathcal{L}_\text{AWR}(\theta) = \mathbb{E}_{(s,a) \sim \mathcal{D}}\!\left[\exp\!\left(\hat A(s,a)/\lambda\right) \cdot \left\|-\nabla_\theta \log \pi_\theta(a|s)\right\|^2\right]$$
+$$\mathcal{L}_\text{AWR}(\theta) = \mathbb{E}_{(s,a) \sim \mathcal{D}}\left[\exp\left(\hat A(s,a)/\lambda\right) \cdot \left\Vert-\nabla_\theta \log \pi_\theta(a|s)\right\Vert^2\right]$$
 
 AWM is AWR applied to diffusion: replacing $\exp(\hat A/\lambda)$ with the linear advantage, and replacing the log-likelihood matching loss with the flow matching MSE.
 

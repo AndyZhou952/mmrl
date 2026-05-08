@@ -10,8 +10,8 @@ Sorted chronologically. Citation edges: → means "is cited by".
 | Paradigm | Defining property | Papers |
 |---|---|---|
 | **Coupled** | Training tied to SDE sampling; log-prob at each step required | DDPO, FlowGRPO, DanceGRPO, MixGRPO + fixes (CPS, GRPO-Guard), UniGRPO |
-| **Decoupled** | Solver-agnostic; no log-prob over denoising steps | Diffusion-DPO, DGPO, DiffusionNFT, AWM |
-| **Offline / other** | No online rollouts; or different domain (robotics) | Diffusion-DPO (offline), SRPO (offline robotics) |
+| **Decoupled** | Solver-agnostic; no log-prob over denoising steps | Diffusion-DPO, SRPO, DiffusionNFT, AWM, DGPO |
+| **Offline / other** | No online rollouts; or different domain (robotics) | Diffusion-DPO (offline) |
 
 Reference: [Flow-Factory algorithm taxonomy](https://github.com/X-GenGroup/Flow-Factory/blob/main/guidance/algorithms.md)
 
@@ -22,7 +22,7 @@ Reference: [Flow-Factory algorithm taxonomy](https://github.com/X-GenGroup/Flow-
 | Short name | Full title | arXiv | Date | Venue | Notes file |
 |---|---|---|---|---|---|
 | **DDPO** | Training Diffusion Models with Reinforcement Learning | [2305.13301](https://arxiv.org/abs/2305.13301) | 2023-05-22 | ICLR 2024 | [foundations/ddpo.md](foundations/ddpo.md) |
-| **SRPO** | Score Regularized Policy Optimization through Diffusion Behavior | [2310.07297](https://arxiv.org/abs/2310.07297) | 2023-10-11 | ICLR 2024 | [foundations/srpo.md](foundations/srpo.md) |
+| **SRPO** | Directly Aligning the Full Diffusion Trajectory with Fine-Grained Human Preference | [2509.06942](https://arxiv.org/abs/2509.06942) | 2025-09-08 | — | [decoupled/srpo.md](decoupled/srpo.md) |
 | **Diffusion-DPO** | Diffusion Model Alignment Using Direct Preference Optimization | [2311.12908](https://arxiv.org/abs/2311.12908) | 2023-11-21 | CVPR 2024 | [foundations/diffusion_dpo.md](foundations/diffusion_dpo.md) |
 | **FlowGRPO** | Flow-GRPO: Training Flow Matching Models via Online RL | [2505.05470](https://arxiv.org/abs/2505.05470) | 2025-05-08 | NeurIPS 2025 | [coupled/flow_grpo.md](coupled/flow_grpo.md) |
 | **DanceGRPO** | DanceGRPO: Unleashing GRPO on Visual Generation | [2505.07818](https://arxiv.org/abs/2505.07818) | 2025-05-12 | — | [coupled/dance_grpo.md](coupled/dance_grpo.md) |
@@ -51,8 +51,8 @@ Diffusion-DPO (2023-11, decoupled root)
   → DGPO (extends group-level DPO to online setting)
   → [offline DPO comparison baseline for all coupled methods]
 
-SRPO (2023-10)
-  → [comparison baseline in offline RL; mostly independent branch]
+SRPO (2025-09, Tencent)
+  → [cited by: HunyuanImage 3.0 pipeline (stage 4); no downstream dependants in this repo yet]
 
 FlowGRPO (2025-05)
   → MixGRPO, CPS, DiffusionNFT, AWM, GRPO-Guard, DGPO

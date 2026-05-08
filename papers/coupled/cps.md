@@ -61,12 +61,12 @@ Total noise variance: $(1-\bar\alpha_{t-1}-\eta^2\tilde\beta_t) + \eta^2\tilde\b
 ## Policy density
 
 CPS step is Gaussian — compatible with GRPO importance ratio:
-$$\pi_\theta^\text{CPS}(x_{t-\Delta t} \mid x_t, c) = \mathcal{N}\!\left(x_{t-\Delta t};\; (1-(t-\Delta t))\hat x_0 + \sqrt{(t-\Delta t)^2-\sigma_t^2}\,\hat x_1,\;\; \sigma_t^2\, I\right)$$
+$$\pi_\theta^\text{CPS}(x_{t-\Delta t} \mid x_t, c) = \mathcal{N}\left(x_{t-\Delta t};\; (1-(t-\Delta t))\hat x_0 + \sqrt{(t-\Delta t)^2-\sigma_t^2}\,\hat x_1,\;\; \sigma_t^2\, I\right)$$
 
-$$\log \pi_\theta^\text{CPS} = -\frac{\|x_{t-\Delta t} - \mu_\theta^\text{CPS}(x_t,t,c)\|^2}{2\sigma_t^2} + \text{const}$$
+$$\log \pi_\theta^\text{CPS} = -\frac{\Vert x_{t-\Delta t} - \mu_\theta^\text{CPS}(x_t,t,c)\Vert^2}{2\sigma_t^2} + \text{const}$$
 
 Importance ratio (same formula as FlowGRPO, different $\mu$):
-$$\rho_t^{(i)} = \frac{\pi_\theta^\text{CPS}(x_{t-\Delta t}^{(i)} \mid x_t^{(i)}, c)}{\pi_{\theta_\text{old}}^\text{CPS}(x_{t-\Delta t}^{(i)} \mid x_t^{(i)}, c)} = \exp\!\left(-\frac{\|x_{t-\Delta t}^{(i)} - \mu_\theta^\text{CPS}\|^2 - \|x_{t-\Delta t}^{(i)} - \mu_{\theta_\text{old}}^\text{CPS}\|^2}{2\sigma_t^2}\right)$$
+$$\rho_t^{(i)} = \frac{\pi_\theta^\text{CPS}(x_{t-\Delta t}^{(i)} \mid x_t^{(i)}, c)}{\pi_{\theta_\text{old}}^\text{CPS}(x_{t-\Delta t}^{(i)} \mid x_t^{(i)}, c)} = \exp\left(-\frac{\Vert x_{t-\Delta t}^{(i)} - \mu_\theta^\text{CPS}\Vert^2 - \Vert x_{t-\Delta t}^{(i)} - \mu_{\theta_\text{old}}^\text{CPS}\Vert^2}{2\sigma_t^2}\right)$$
 
 ---
 

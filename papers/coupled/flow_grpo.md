@@ -52,10 +52,10 @@ $$\nabla_{x_t} \log p_t(x_t) \approx \frac{\hat x_0(x_t, t) - x_t}{t^2}, \quad \
 $$x_{t-\Delta t} = x_t - v_\theta(x_t,t,c)\,\Delta t + \frac{s_t^2 \Delta t}{2t^2}\left(\hat x_0 - x_t\right) + s_t\sqrt{\Delta t}\,\epsilon_t, \quad \epsilon_t \sim \mathcal{N}(0,I)$$
 
 This step is a **Gaussian** with mean $\mu_\theta(x_t, t)$ and variance $s_t^2 \Delta t\, I$:
-$$\pi_\theta(x_{t-\Delta t} \mid x_t, c) = \mathcal{N}\!\left(x_{t-\Delta t};\; \mu_\theta(x_t,t,c),\; s_t^2\,\Delta t\, I\right)$$
+$$\pi_\theta(x_{t-\Delta t} \mid x_t, c) = \mathcal{N}\left(x_{t-\Delta t};\; \mu_\theta(x_t,t,c),\; s_t^2\,\Delta t\, I\right)$$
 
 The log-likelihood (used in the importance ratio) is:
-$$\log \pi_\theta(x_{t-\Delta t} \mid x_t, c) = -\frac{\|x_{t-\Delta t} - \mu_\theta(x_t,t,c)\|^2}{2\, s_t^2\,\Delta t} + \text{const}$$
+$$\log \pi_\theta(x_{t-\Delta t} \mid x_t, c) = -\frac{\Vert x_{t-\Delta t} - \mu_\theta(x_t,t,c)\Vert^2}{2\, s_t^2\,\Delta t} + \text{const}$$
 
 ---
 
@@ -74,11 +74,11 @@ This is the standard GRPO advantage: group-normalised, zero-mean, unit-variance 
 PPO-clipped GRPO objective summed over all $T$ training steps:
 
 $$\boxed{
-\mathcal{L}_\text{FlowGRPO}(\theta) = -\mathbb{E}_{c,\{x_0^{(i)}\}}\!\left[\frac{1}{N_g}\sum_{i=1}^{N_g} \frac{1}{T}\sum_{t=1}^{T} \min\!\left(\rho_t^{(i)}\hat A^{(i)},\; \text{clip}\!\left(\rho_t^{(i)}, 1{-}\epsilon, 1{+}\epsilon\right)\hat A^{(i)}\right)\right] + \beta\, D_\text{KL}(\pi_\theta \| \pi_\text{ref})
+\mathcal{L}_\text{FlowGRPO}(\theta) = -\mathbb{E}_{c,\{x_0^{(i)}\}}\left[\frac{1}{N_g}\sum_{i=1}^{N_g} \frac{1}{T}\sum_{t=1}^{T} \min\left(\rho_t^{(i)}\hat A^{(i)},\; \text{clip}\left(\rho_t^{(i)}, 1{-}\epsilon, 1{+}\epsilon\right)\hat A^{(i)}\right)\right] + \beta\, D_\text{KL}(\pi_\theta \Vert \pi_\text{ref})
 }$$
 
 where:
-$$\rho_t^{(i)} = \frac{\pi_\theta(x_{t-\Delta t}^{(i)} \mid x_t^{(i)}, c)}{\pi_{\theta_\text{old}}(x_{t-\Delta t}^{(i)} \mid x_t^{(i)}, c)} = \exp\!\left(-\frac{\|x_{t-\Delta t}^{(i)} - \mu_\theta\|^2 - \|x_{t-\Delta t}^{(i)} - \mu_{\theta_\text{old}}\|^2}{2\,s_t^2\,\Delta t}\right)$$
+$$\rho_t^{(i)} = \frac{\pi_\theta(x_{t-\Delta t}^{(i)} \mid x_t^{(i)}, c)}{\pi_{\theta_\text{old}}(x_{t-\Delta t}^{(i)} \mid x_t^{(i)}, c)} = \exp\left(-\frac{\Vert x_{t-\Delta t}^{(i)} - \mu_\theta\Vert^2 - \Vert x_{t-\Delta t}^{(i)} - \mu_{\theta_\text{old}}\Vert^2}{2\,s_t^2\,\Delta t}\right)$$
 
 ---
 
@@ -90,11 +90,11 @@ $$\rho_t^{(i)} = \frac{\pi_\theta(x_{t-\Delta t}^{(i)} \mid x_t^{(i)}, c)}{\pi_{
 
 ### Flow-GRPO-Fast variant
 
-Even cheaper: generate a **full ODE trajectory** first (no gradient tracking), then at one randomly chosen timestep $t^*$ branch into $N_g$ SDE samples:
+Even cheaper: generate a **full ODE trajectory** first (no gradient tracking), then at one randomly chosen timestep $t^{\ast}$ branch into $N_g$ SDE samples:
 
-$$x_{t^*} \xrightarrow{\text{ODE, no grad}} \text{(shared prefix)} \quad \xrightarrow{1\text{-step SDE}} \{x_{t^*-\Delta t}^{(i)}\}_{i=1}^{N_g}$$
+$$x_{t^{\ast}} \xrightarrow{\text{ODE, no grad}} \text{(shared prefix)} \quad \xrightarrow{1\text{-step SDE}} \lbrace x_{t^{\ast}-\Delta t}^{(i)}\rbrace_{i=1}^{N_g}$$
 
-Only 1–2 gradient-tracked steps per trajectory. Reward is still computed at $x_0$ (run ODE from $x_{t^*-\Delta t}^{(i)}$ to $x_0^{(i)}$ without gradient tracking). Matches reward performance at significantly reduced cost.
+Only 1–2 gradient-tracked steps per trajectory. Reward is still computed at $x_0$ (run ODE from $x_{t^{\ast}-\Delta t}^{(i)}$ to $x_0^{(i)}$ without gradient tracking). Matches reward performance at significantly reduced cost.
 
 ---
 
