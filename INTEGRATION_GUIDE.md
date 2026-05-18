@@ -38,7 +38,7 @@ Every paper in the coupled or decoupled directory must be classified:
 
 **Decision rule in detail**:
 - If the paper derives an importance ratio $\rho_t = \pi_\theta / \pi_{\theta_\text{old}}$ at individual denoising steps → **Coupled**
-- If the paper uses only the terminal images $\lbracex_0^{(i)}\rbrace$ and a forward-noising or ELBO-based loss → **Decoupled**
+- If the paper uses only the terminal images $\lbrace{}x_0^{(i)}\rbrace$ and a forward-noising or ELBO-based loss → **Decoupled**
 - If the paper is a pure fix/modifier (e.g., changes the objective formula but does not change the paradigm) → same directory as the base method it modifies
 
 ### Dedicated file vs. `advances.md` entry

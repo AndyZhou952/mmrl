@@ -57,7 +57,7 @@ In both cases, the RL loss is the pretraining loss multiplied by the advantage w
 
 Group-relative advantage (same as GRPO; see [NOTATION.md §5](../NOTATION.md)):
 
-$$\hat{A}^{(i)} = \frac{r^{(i)} - \overline{r}}{\mathrm{std}(\lbracer^{(j)}\rbrace) + \delta}, \quad r^{(i)} = r(x_0^{(i)}, c)$$
+$$\hat{A}^{(i)} = \frac{r^{(i)} - \overline{r}}{\mathrm{std}(\lbrace{}r^{(j)}\rbrace) + \delta}, \quad r^{(i)} = r(x_0^{(i)}, c)$$
 
 **Effect of advantage sign**:
 - $\hat{A}^{(i)} > 0$: $w(t)\hat{A}^{(i)} > 0$ → loss pushes $v_\theta$ **toward** the clean target for this image → reinforces this generation.

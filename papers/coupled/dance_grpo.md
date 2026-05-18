@@ -78,7 +78,7 @@ where $\sigma_\text{SDE}^2$ is $\eta_t^2 g_t^2\Delta t$ (DDPM) or $\varepsilon_t
 
 **Why this works**: The group baseline subtracts the mean reward, converting absolute scores to relative rankings within each prompt's group. This makes the training signal invariant to reward scale, which is especially important when mixing reward sources (e.g., aesthetic score in [0, 10] with binary safety in {0, 1}).
 
-$$\hat{A}^{(i)} = \frac{r^{(i)} - \overline{r}}{\mathrm{std}(\lbracer^{(j)}\rbrace) + \delta}, \quad r^{(i)} = \sum_k w_k r_k(x_0^{(i)}, c)$$
+$$\hat{A}^{(i)} = \frac{r^{(i)} - \overline{r}}{\mathrm{std}(\lbrace{}r^{(j)}\rbrace) + \delta}, \quad r^{(i)} = \sum_k w_k r_k(x_0^{(i)}, c)$$
 
 ---
 

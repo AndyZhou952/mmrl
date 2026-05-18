@@ -1,6 +1,6 @@
 # UniGRPO — Unified Policy Optimization for Reasoning-Driven Visual Generation
 
-> Notation: follows [NOTATION.md](../NOTATION.md). Text policy: $\pi_\theta^\text{txt}$ over token sequence $y$. Image policy: $\pi_\theta^\text{img}$ over SDE window steps. RatioNorm adapted from [GRPO-Guard](grpo_guard.md). Group size $G$; SDE window $T_\text{SDE} \subset \lbracet_1,\ldots,t_T\rbrace$.
+> Notation: follows [NOTATION.md](../NOTATION.md). Text policy: $\pi_\theta^\text{txt}$ over token sequence $y$. Image policy: $\pi_\theta^\text{img}$ over SDE window steps. RatioNorm adapted from [GRPO-Guard](grpo_guard.md). Group size $G$; SDE window $T_\text{SDE} \subset \lbrace{}t_1,\ldots,t_T\rbrace$.
 
 | Field | Value |
 |---|---|
@@ -26,7 +26,7 @@ UniGRPO targets **unified multimodal models** — transformers that generate bot
 
 **Idea**: Cast text generation and image generation as a **single unified MDP** with a shared terminal reward $R^{(i)} = R(x_0^{(i)}, y^{(i)}, c)$ evaluated on the complete (text, image) output. The group-relative advantage is computed jointly:
 
-$$\hat{A}^{(i)} = \frac{R^{(i)} - \overline{R}}{\mathrm{std}(\lbraceR^{(j)}\rbrace) + \delta}$$
+$$\hat{A}^{(i)} = \frac{R^{(i)} - \overline{R}}{\mathrm{std}(\lbrace{}R^{(j)}\rbrace) + \delta}$$
 
 This advantage flows into both the text gradient (via token-level importance ratios) and the image gradient (via SDE-step importance ratios).
 

@@ -33,9 +33,9 @@ The key property: **the ODE trajectory is deterministic** — given initial nois
 
 ### GRPO for LLMs (DeepSeek-R1, January 2025)
 
-GRPO (Group Relative Policy Optimization) replaces PPO's value network with a group-relative baseline. For a prompt $c$, generate $N_g$ responses $\lbracey^{(i)}\rbrace$, evaluate each with reward $r^{(i)}$, and define the advantage:
+GRPO (Group Relative Policy Optimization) replaces PPO's value network with a group-relative baseline. For a prompt $c$, generate $N_g$ responses $\lbrace{}y^{(i)}\rbrace$, evaluate each with reward $r^{(i)}$, and define the advantage:
 
-$$\hat{A}^{(i)} = \frac{r^{(i)} - \overline{r}}{\mathrm{std}(\lbracer^{(j)}\rbrace) + \delta}$$
+$$\hat{A}^{(i)} = \frac{r^{(i)} - \overline{r}}{\mathrm{std}(\lbrace{}r^{(j)}\rbrace) + \delta}$$
 
 The policy gradient uses a PPO-clip objective with per-token importance ratios $\rho_k^{(i)} = \pi_\theta(y_k^{(i)} | y_{<k}^{(i)}, c) / \pi_{\theta_\text{old}}(\cdots)$. These ratios are tractable because LLM policies are products of categorical softmax distributions — each token has a well-defined probability. GRPO proved highly effective for reasoning in text: cheap to implement (no value network), stable, and sample-efficient.
 
@@ -99,9 +99,9 @@ GRPO can now be applied step-by-step, structurally identical to how it operates 
 
 **Issue**: Using the raw reward $r^{(i)}$ as the policy gradient signal is high-variance (REINFORCE-style). Rewards vary across prompts; a good score for one prompt may be mediocre for another. This makes learning unstable.
 
-**Idea**: Adopt GRPO's group-relative advantage. Generate $N_g$ images $\lbracex_0^{(i)}\rbrace_{i=1}^{N_g}$ for the **same** prompt $c$, then normalise rewards within the group:
+**Idea**: Adopt GRPO's group-relative advantage. Generate $N_g$ images $\lbrace{}x_0^{(i)}\rbrace_{i=1}^{N_g}$ for the **same** prompt $c$, then normalise rewards within the group:
 
-$$\hat{A}^{(i)} = \frac{r^{(i)} - \overline{r}}{\mathrm{std}(\lbracer^{(j)}\rbrace) + \delta}, \quad \overline{r} = \frac{1}{N_g}\sum_{j=1}^{N_g} r^{(j)}$$
+$$\hat{A}^{(i)} = \frac{r^{(i)} - \overline{r}}{\mathrm{std}(\lbrace{}r^{(j)}\rbrace) + \delta}, \quad \overline{r} = \frac{1}{N_g}\sum_{j=1}^{N_g} r^{(j)}$$
 
 **Why this works**: The group mean acts as a prompt-specific baseline, removing variance due to prompt difficulty. Standard-deviation normalisation makes gradients scale-invariant across reward models and prompt batches — the same technique that made GRPO effective in LLM reasoning, transplanted to visual generation. This replaces the raw reward $r^{(i)}$ used in predecessor work (DDPO).
 
@@ -115,7 +115,7 @@ $$\hat{A}^{(i)} = \frac{r^{(i)} - \overline{r}}{\mathrm{std}(\lbracer^{(j)}\rbra
 
 **Idea 2 — FlowGRPO-Fast**: Run a full ODE trajectory (no gradient tracking) to a randomly chosen branch point $t^{\ast}$, then take one SDE step $N_g$ times in parallel:
 
-$$x_1 \xrightarrow[\text{no grad}]{\text{ODE}} x_{t^{\ast}} \xrightarrow[\times N_g]{\text{1-step SDE}} \lbracex_{t^{\ast}-\Delta t}^{(i)}\rbrace \xrightarrow[\text{no grad}]{\text{ODE}} \lbracex_0^{(i)}\rbrace$$
+$$x_1 \xrightarrow[\text{no grad}]{\text{ODE}} x_{t^{\ast}} \xrightarrow[\times N_g]{\text{1-step SDE}} \lbrace{}x_{t^{\ast}-\Delta t}^{(i)}\rbrace \xrightarrow[\text{no grad}]{\text{ODE}} \lbrace{}x_0^{(i)}\rbrace$$
 
 **Why Fast works**: The reward is evaluated at $x_0$, not at $t^{\ast}$. The single SDE branch injects enough diversity — through independent noise — for the group advantage $\hat{A}^{(i)}$ to provide a useful gradient signal. Only 1–2 gradient-tracked steps are needed per trajectory, reducing memory cost by $\sim T_\text{train}$× compared to a full rollout.
 
@@ -126,7 +126,7 @@ $$x_1 \xrightarrow[\text{no grad}]{\text{ODE}} x_{t^{\ast}} \xrightarrow[\times 
 Combining the solutions to all three problems: PPO-clipped GRPO objective summed over all training steps:
 
 $$\boxed{
-\mathcal{L}_\text{FlowGRPO}(\theta) = -\mathbb{E}_{c,\lbracex_0^{(i)}\rbrace}\left[\frac{1}{N_g}\sum_{i=1}^{N_g}\frac{1}{T}\sum_{t=1}^{T} \min\left(\rho_t^{(i)}\hat{A}^{(i)},\ \mathrm{clip}\left(\rho_t^{(i)}, 1{-}\epsilon, 1{+}\epsilon\right)\hat{A}^{(i)}\right)\right] + \betaD_\mathrm{KL}(\pi_\theta \Vert \pi_\mathrm{ref})
+\mathcal{L}_\text{FlowGRPO}(\theta) = -\mathbb{E}_{c,\lbrace{}x_0^{(i)}\rbrace}\left[\frac{1}{N_g}\sum_{i=1}^{N_g}\frac{1}{T}\sum_{t=1}^{T} \min\left(\rho_t^{(i)}\hat{A}^{(i)},\ \mathrm{clip}\left(\rho_t^{(i)}, 1{-}\epsilon, 1{+}\epsilon\right)\hat{A}^{(i)}\right)\right] + \betaD_\mathrm{KL}(\pi_\theta \Vert \pi_\mathrm{ref})
 }$$
 
 where $\rho_t^{(i)}$ is the per-step importance ratio (Problem 1), $\hat{A}^{(i)}$ is the group-relative advantage (Problem 2), and $T = T_\text{train}$ may be reduced per Problem 3.

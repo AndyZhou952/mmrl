@@ -95,6 +95,18 @@ CHECKS = [
         r'command name). Use \\Vert{} to terminate the command before the variable.',
     ),
     (
+        r'\\lbrace[a-zA-Z]',
+        'ERROR',
+        r'\\lbrace immediately followed by a letter: KaTeX parses \\lbracex as '
+        r'the undefined command \\lbracex. Use \\lbrace{} to separate.',
+    ),
+    (
+        r'\\rbrace[a-zA-Z]',
+        'ERROR',
+        r'\\rbrace immediately followed by a letter: KaTeX parses \\rbracex as '
+        r'the undefined command \\rbracex. Use \\rbrace{} to separate.',
+    ),
+    (
         r'\^[\*\+](?![{a-zA-Z0-9])',
         'ERROR',
         r'^* and ^+ without braces: * and + are CommonMark emphasis chars. '
@@ -212,8 +224,10 @@ def _fix_math_span(math: str) -> str:
     # \| → \Vert{} — the {} prevents KaTeX from absorbing the next letter
     # into the command name (e.g. \Vertx would be the undefined command \Vertx)
     math = math.replace(r'\|', r'\Vert{}')
-    # Repair \Vert<letter> left by a prior incomplete fix
+    # Repair \Vert<letter> / \lbrace<letter> / \rbrace<letter> left by prior fix
     math = re.sub(r'\\Vert(?=[a-zA-Z])', r'\\Vert{}', math)
+    math = re.sub(r'\\lbrace(?=[a-zA-Z])', r'\\lbrace{}', math)
+    math = re.sub(r'\\rbrace(?=[a-zA-Z])', r'\\rbrace{}', math)
     # Remove spacing/kerning commands that CommonMark strips to punctuation
     math = math.replace(r'\,', '')
     math = math.replace(r'\;', '')
