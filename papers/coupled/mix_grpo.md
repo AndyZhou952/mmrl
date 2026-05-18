@@ -1,6 +1,6 @@
 # MixGRPO — Unlocking Flow-based GRPO Efficiency with Mixed ODE-SDE
 
-> Notation: follows [NOTATION.md](../NOTATION.md). Flow matching convention: $v_\theta$, $t \in [0,1]$. Window indices in discrete steps. SDE diffusion coefficient: $\sigma_t$.
+> Notation: follows [NOTATION.md](../NOTATION.md). Flow matching: $v_\theta$, $t \in [0,1]$. Window $\mathcal{W}(l)$ is a contiguous block of denoising steps; SDE diffusion coefficient inside window: $\sigma_t$.
 
 | Field | Value |
 |---|---|
@@ -9,118 +9,124 @@
 | **Venue** | — (preprint) |
 | **Authors** | Junzhe Li, Yutao Cui, Tao Huang, Yinping Ma, Chun Fan, Yiming Cheng, Miles Yang, Zhao Zhong, Liefeng Bo |
 | **GitHub** | https://github.com/Tencent-Hunyuan/MixGRPO |
-| **Paradigm** | **Coupled** — per-step log-prob within window; ODE outside |
+| **Paradigm** | **Coupled** — SDE + gradient confined to a sliding window; ODE everywhere else |
 | **Cites** | FlowGRPO (2505.05470), DanceGRPO (2505.07818), DDPO, GRPO |
-| **Cited by** | HunyuanImage 3.0 (uses MixGRPO in production training) |
+| **Cited by** | HunyuanImage 3.0 (production training pipeline) |
 
 ---
 
-## Motivation
+## Context
 
-FlowGRPO and DanceGRPO run SDE for all $T$ denoising steps. Two costs arise: (1) SDE cannot use high-order solvers; (2) gradient tracking through all $T$ steps is memory-intensive. **Key insight**: only SDE steps contribute to the importance ratio and gradient. MixGRPO confines SDE and gradient to a contiguous **sliding window** of $w$ steps, using fast ODE elsewhere.
-
----
-
-## Setting
-
-Same as FlowGRPO/DanceGRPO: flow matching, $N_g$ images per prompt, group-relative advantage.
-
-**Window** $\mathcal{W}(l) = \lbrace l, l{+}1, \ldots, l{+}w{-}1\rbrace$: contiguous block of $w$ denoising steps starting at position $l$.
-**Hyperparameters**: $w$ (width), $\tau$ (shift interval in iterations), $s$ (stride per shift).
+FlowGRPO and DanceGRPO established that applying GRPO to flow matching requires converting the ODE to an SDE for every denoising step — giving a tractable importance ratio but forcing the entire $T$-step trajectory through SDE sampling. MixGRPO is the first work to ask: **do all $T$ steps actually need to be stochastic?** The answer is no: only the steps that contribute to the importance ratio and gradient need SDE treatment. This file builds on the FlowGRPO background; see [flow_grpo.md](flow_grpo.md) for the ODE→SDE derivation.
 
 ---
 
-## Sampling (during training — mixed ODE/SDE)
+## Problem 1 — Full $T$-step SDE is slow and blocks high-quality ODE solvers
 
-Three zones across the $T$ denoising steps:
+**Issue**: FlowGRPO and DanceGRPO run SDE sampling for all $T$ denoising steps. Two compounding costs arise: (1) SDE steps are first-order Euler-Maruyama — they cannot use high-order ODE solvers (DPM-Solver++, Heun) that achieve the same quality with $2\text{–}3\times$ fewer steps; (2) gradient tracking through all $T$ SDE steps requires storing all $T$ intermediate activations — $O(T \cdot d)$ peak memory.
 
-$$\underbrace{x_T \to \cdots \to x_{l+w}}_{\text{ODE, no gradient}} \Big| \underbrace{x_{l+w} \to \cdots \to x_l}_{\text{SDE + gradient}} \Big| \underbrace{x_l \to \cdots \to x_0}_{\text{ODE, no gradient}}$$
+**Idea**: Confine both SDE sampling and gradient tracking to a **contiguous sliding window** $\mathcal{W}(l) = \{l, l{+}1, \ldots, l{+}w{-}1\}$ of $w$ denoising steps. Outside the window, use a standard deterministic ODE with no gradient tracking. Slide the window through the trajectory over training iterations, so different segments accumulate gradient updates over time.
 
-**Outside window** (ODE):
+**Why this works**: The GRPO importance ratio $\rho_t$ is meaningful only at SDE steps (ODE steps have $\rho_t = 1$ trivially, contributing nothing to the gradient). Confining SDE to $w$ steps reduces memory to $O(w \cdot d)$, and allows the non-window steps to use fast ODE solvers — improving trajectory quality at the tail (high detail) and head (coarse structure). Sliding the window ensures the entire trajectory is eventually covered across iterations, so the full reward landscape is optimised even though only $w$ steps are updated at each iteration.
 
-$$x_{t-\Delta t} = x_t - v_\theta(x_t, t, c)\Delta t$$
+### Three trajectory zones
 
-**Inside window** $t \in \mathcal{W}(l)$ (SDE):
+For a trajectory with $T$ steps, window starting at position $l$:
 
-$$x_{t-\Delta t} = x_t - v_\theta(x_t,t,c)\Delta t + \frac{\sigma_t^2\Delta t}{2t^2}(\hat x_0 - x_t) + \sigma_t\sqrt{\Delta t}\epsilon_t, \quad \epsilon_t \sim \mathcal{N}(0,I)$$
+$$\underbrace{x_T \to \cdots \to x_{l+w}}_{\text{ODE, no gradient}} \;\Bigg|\; \underbrace{x_{l+w} \to \cdots \to x_l}_{\text{SDE + gradient, window } \mathcal{W}(l)} \;\Bigg|\; \underbrace{x_l \to \cdots \to x_0}_{\text{ODE, no gradient}}$$
 
-where $\hat x_0 = x_t - tv_\theta(x_t,t,c)$. The transition inside the window is Gaussian:
+**Outside window** (ODE, no grad):
 
-$$\pi_\theta(x_{t-\Delta t} \mid x_t, c) = \mathcal{N}\left(x_{t-\Delta t}; \mu_\theta(x_t,t,c), \sigma_t^2\Delta t I\right), \quad t \in \mathcal{W}(l)$$
+$$x_{t-\Delta t} = x_t - v_\theta(x_t, t, c)\,\Delta t$$
 
-**Window sliding** (every $\tau$ training iterations):
+**Inside window** (SDE with score correction, with grad):
 
-$$l \leftarrow \min(l + s, T - w)$$
+$$x_{t-\Delta t} = x_t - v_\theta(x_t,t,c)\,\Delta t + \frac{\sigma_t^2\Delta t}{2t^2}(\hat{x}_0 - x_t) + \sigma_t\sqrt{\Delta t}\,\epsilon_t, \quad \epsilon_t \sim \mathcal{N}(0,I)$$
 
-This rotates gradient updates through different trajectory segments over training.
+where $\hat{x}_0 = x_t - tv_\theta(x_t,t,c)$ is the Tweedie estimate. The per-step transition inside the window is Gaussian:
+
+$$\pi_\theta(x_{t-\Delta t} \mid x_t, c) = \mathcal{N}\!\left(x_{t-\Delta t};\ \mu_\theta(x_t,t,c),\ \sigma_t^2\Delta t\, I\right), \quad t \in \mathcal{W}(l)$$
+
+**Window sliding** (every $\tau$ training iterations, stride $s$):
+
+$$l \leftarrow \min(l + s,\ T - w)$$
 
 ---
 
-## Reward calculation
+## Problem 2 — Window width is fixed; extreme compression still needs high-order ODE
 
-Evaluate $r(x_0^{(i)}, c)$ at the terminal image. The ODE steps after the window run without gradient to produce $x_0$.
+**Issue**: Even with a window of $w=4$ steps out of $T=25$ (the paper's optimum), the 21 ODE steps outside the window still use first-order Euler. This is acceptable for moderate $T$, but for larger $T$ or video (where $T$ may reach 100+), Euler ODE quality degrades. A variant that uses a high-order ODE solver outside the window would compound the speedup.
+
+**Idea — MixGRPO-Flash**: Shrink the window to $w=1$ step and replace all ODE steps with **DPM-Solver++** at compression ratio $\tilde{r} < 1$:
+
+$$\tilde{T} = 1 + (T-1)\tilde{r} \qquad \text{(effective total steps after solver compression)}$$
+
+**Why this works**: DPM-Solver++ is a high-order (second/third order) solver that achieves Euler-equivalent quality at $\sim 2\text{–}3\times$ fewer steps. Combining $w=1$ with $\tilde{r} \approx 0.3\text{–}0.4$ gives a total speedup:
+
+$$S = T/\tilde{T} \approx 1/\tilde{r}$$
+
+The paper reports **71% training time reduction** (MixGRPO-Flash vs. FlowGRPO) with comparable reward performance.
 
 ---
 
-## Training objective
+## Training Objective
 
-GRPO-clip loss restricted to window steps only:
+GRPO-clip loss restricted to window steps only; ODE steps contribute nothing:
 
 $$\boxed{
-\mathcal{L}_\text{MixGRPO}(\theta) = -\mathbb{E}\left[\frac{1}{N_g}\sum_{i=1}^{N_g} \frac{1}{|\mathcal{W}|}\sum_{t \in \mathcal{W}(l)} \min\left(\rho_t^{(i)}\hat A^{(i)}, \text{clip}\left(\rho_t^{(i)}, 1{-}\epsilon, 1{+}\epsilon\right)\hat A^{(i)}\right)\right]
+\mathcal{L}_\text{MixGRPO}(\theta) = -\mathbb{E}\!\left[\frac{1}{N_g}\sum_{i=1}^{N_g}\frac{1}{|\mathcal{W}|}\sum_{t \in \mathcal{W}(l)} \min\!\left(\rho_t^{(i)}\hat{A}^{(i)},\ \mathrm{clip}\!\left(\rho_t^{(i)}, 1{-}\epsilon, 1{+}\epsilon\right)\hat{A}^{(i)}\right)\right]
 }$$
 
-Importance ratio (only window steps; ODE steps have $\rho_t = 1$ trivially):
+Importance ratio (window steps only):
 
-$$\rho_t^{(i)} = \frac{\pi_\theta(x_{t-\Delta t}^{(i)} \mid x_t^{(i)}, c)}{\pi_{\theta_\text{old}}(x_{t-\Delta t}^{(i)} \mid x_t^{(i)}, c)} = \exp\left(-\frac{\Vert x_{t-\Delta t}^{(i)} - \mu_\theta\Vert^2 - \Vert x_{t-\Delta t}^{(i)} - \mu_{\theta_\text{old}}\Vert^2}{2\sigma_t^2\Delta t}\right), \quad t \in \mathcal{W}(l)$$
-
----
-
-## MixGRPO-Flash variant
-
-Shrink the window to **one step** ($w=1$) and use DPM-Solver++ for all ODE steps with compression rate $\tilde r < 1$:
-
-$$\tilde T = 1 + (T - 1)\tilde r \quad (\text{effective total steps after compression})$$
-
-Speedup factor relative to full MixGRPO:
-
-$$S = T / \tilde T \approx 1 / \tilde r \quad \text{for large } T$$
-
-Achieves **71% training time reduction** with comparable reward performance.
+$$\rho_t^{(i)} = \exp\!\left(-\frac{\|x_{t-\Delta t}^{(i)} - \mu_\theta\|^2 - \|x_{t-\Delta t}^{(i)} - \mu_{\theta_\text{old}}\|^2}{2\sigma_t^2\Delta t}\right), \quad t \in \mathcal{W}(l)$$
 
 ---
 
-## Training algorithm
+## Algorithm
 
 ```
-Input: pretrained v_θ, reward r, prompt dist p_c, N_g, w, τ, s, T
-Initialize: l = 0
+Input: pretrained v_θ, reward r, prompt dist p_c, N_g,
+       window width w, slide interval τ_iter, stride s, total steps T
+Initialize: l ← 0
 Repeat:
-  Every τ iters:  l ← min(l+s, T-w)
+  Every τ_iter iterations:  l ← min(l + s, T - w)
   1. Sample prompts {c_j}
-  2. For each c_j, generate N_g trajectories:
-       x_T ~ N(0,I) per sample
-       ODE from T down to l+w+1  (no grad)
-       SDE from l+w down to l    (store for gradient)  ← W(l) steps
-       ODE from l-1 down to 0    (no grad) → x_0^(i)
-  3. R^(i) = r(x_0^(i), c_j);  Â^(i) = normalise
-  4. For K gradient steps:
-       ρ_t^(i) = π_θ / π_{θ_old}  for t ∈ W(l)
-       L = -mean [ min(ρ·Â, clip(ρ,1-ε,1+ε)·Â) ]
-       θ ← θ - η ∇_θ L
-  5. θ_old ← θ
+  2. For each c_j, generate N_g trajectories (mixed ODE/SDE):
+       x_T^(i) ~ N(0,I)
+       ODE (no grad):  x_T^(i) → x_{l+w}^(i)          # steps T ... l+w+1
+       SDE (with grad): x_{l+w}^(i) → x_l^(i)          # steps l+w ... l+1 (window)
+         For t = l+w, ..., l+1:
+           x̂_0 ← x_t - t·v_{θ_old}(x_t^(i), t, c)
+           μ_{θ_old} ← x_t - v_{θ_old}·Δt + (σ_t²Δt/2t²)·(x̂_0 - x_t)
+           x_{t-Δt}^(i) ← μ_{θ_old} + σ_t√Δt·ε,  ε ~ N(0,I)
+       ODE (no grad):  x_l^(i) → x_0^(i)               # steps l ... 1
+  3. Compute R^(i) = r(x_0^(i), c_j)
+  4. Â^(i) = (R^(i) - mean) / std
+  5. For K gradient steps:
+       For t ∈ W(l), i = 1,...,N_g:
+         μ_θ ← x_t - v_θ·Δt + (σ_t²Δt/2t²)·(x̂_0 - x_t)   # current θ
+         ρ_t^(i) = exp(-(‖x_{t-Δt}^(i) - μ_θ‖² - ‖x_{t-Δt}^(i) - μ_{θ_old}‖²) / (2σ_t²Δt))
+         L ← -mean[ min(ρ·Â, clip(ρ, 1-ε, 1+ε)·Â) ]
+         θ ← θ - η ∇_θ L
+  6. θ_old ← θ
+
+MixGRPO-Flash variant: replace ODE steps outside window with DPM-Solver++ at rate r̃;
+  shrink window to w=1; total effective steps T̃ = 1 + (T-1)·r̃.
 ```
 
 ---
 
-## Comparison
+## Efficiency Comparison
 
-| Method | SDE steps / trajectory | Gradient steps | ODE solver quality |
-|---|---|---|---|
-| FlowGRPO | All $T$ | All $T$ | Standard |
-| FlowGRPO-Fast | 1–2 (random branch point) | 1–2 | Standard |
-| MixGRPO | Window $w$ (sliding) | $w$ | Standard outside window |
-| MixGRPO-Flash | 1 | 1 | DPM-Solver++ outside window |
+| Method | SDE steps / traj | Grad steps | ODE solver outside | Reported speedup |
+|---|---|---|---|---|
+| FlowGRPO | All $T$ | All $T$ | Euler (N/A) | 1× (baseline) |
+| FlowGRPO-Fast | 1–2 (branch point) | 1–2 | Euler | ~$T/2$× |
+| MixGRPO | $w$ (sliding) | $w$ | Euler | $T/w$× |
+| MixGRPO-Flash | 1 | 1 | DPM-Solver++ | **71%** time reduction |
+
+Recommended hyperparameters (ablated in paper): $w=4$, $\tau_\text{iter}=25$, $s=1$ for $T=25$.
 
 ---
 
@@ -128,6 +134,7 @@ Repeat:
 
 | Problem | Note |
 |---|---|
-| Window width $w$ is a hyperparameter | Optimal: $w=4$, $\tau=25$, $s=1$ for $T=25$ per paper ablation |
-| SDE noise within window still causes artifacts | [CPS](cps.md) can be applied inside $\mathcal{W}(l)$ |
-| Ratio imbalance within window still exists | [GRPO-Guard](grpo_guard.md) compatible |
+| Window width $w$ is a hyperparameter | Sensitivity studied in paper; $w=4$ recommended |
+| SDE noise inside window still causes artifacts | [CPS](cps.md) can replace the SDE step inside $\mathcal{W}(l)$ |
+| Ratio imbalance within window persists | [GRPO-Guard](grpo_guard.md) is compatible |
+| Still requires SDE for any gradient | Fully solver-agnostic: see [DGPO](../decoupled/dgpo.md), [AWM](../decoupled/awm.md) |

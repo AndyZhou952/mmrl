@@ -60,7 +60,7 @@ Links to algorithm notes in this repo use relative paths (e.g. `papers/coupled/f
 | SFT | — | Quality fine-tuning |
 | Post-training | **Video-DPO** | Reduce motion artifacts, improve visual quality |
 
-**Video-DPO**: a direct application of DPO to video generation. Preference pairs are constructed as (higher-quality video, lower-quality video) for the same prompt. The DPO loss is computed over the full video denoising trajectory. This is an in-house adaptation; no separate paper exists beyond the technical report. Conceptually extends [Diffusion-DPO](papers/foundations/diffusion_dpo.md) [decoupled] to video.
+**Video-DPO**: a direct application of DPO to video generation. Preference pairs are constructed as (higher-quality video, lower-quality video) for the same prompt. The DPO loss is computed over the full video denoising trajectory. This is an in-house adaptation; no separate paper exists beyond the technical report. Conceptually extends Diffusion-DPO ([2311.12908](https://arxiv.org/abs/2311.12908)) [decoupled] to video.
 
 ---
 
@@ -297,7 +297,7 @@ These algorithms appear in industry model training pipelines but have no separat
 
 **Description**: applies the Diffusion-DPO [decoupled] objective to video generation by constructing preference pairs of (higher-quality, lower-quality) videos for the same prompt, then computing the ELBO-based DPO loss over the video DiT. Reduces motion artifacts and improves temporal consistency.
 
-Conceptually the same as Diffusion-DPO (`papers/foundations/diffusion_dpo.md`) extended to video. No theoretical novelty beyond the application; the technical report treats it as an engineering adaptation.
+Conceptually the same as Diffusion-DPO ([2311.12908](https://arxiv.org/abs/2311.12908)) extended to video. No theoretical novelty beyond the application; the technical report treats it as an engineering adaptation.
 
 ---
 

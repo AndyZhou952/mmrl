@@ -15,129 +15,154 @@
 
 ---
 
-## Motivation
+## Background: Two Known Ingredients
 
-GRPO from LLMs achieves large alignment gains via group-relative policy gradients. Applying it to flow matching models is blocked by one obstacle: flow matching uses a **deterministic ODE**, which has no density — so the importance ratio $\rho_t = \pi_\theta / \pi_{\theta_\text{old}}$ is undefined. FlowGRPO solves this by converting the ODE to an equivalent SDE that preserves the marginal distribution at every $t$, enabling tractable per-step Gaussian likelihoods.
+FlowGRPO is the **first work to apply GRPO to flow matching models**, combining two lines of work that readers are expected to know independently. This section bridges them to explain why the combination is non-trivial, and what FlowGRPO contributes.
 
----
+### Flow matching (Lipman et al. 2022; Liu et al. 2022)
 
-## Setting
+Flow matching trains a velocity predictor $v_\theta(x_t, t, c)$ that defines a **deterministic ODE** transporting noise to data:
 
-- **Model**: flow matching (rectified flow) with velocity predictor $v_\theta(x_t, t, c)$.
-- **ODE** (inference): $dx_t = v_\theta(x_t, t, c) dt$, integrated from $t=1$ to $t=0$ with $N$ Euler steps.
-- **Group size** $N_g$ (typically 8–16): number of images generated per prompt.
-- **Reward model**: $r(x_0, c)$, black-box scalar.
+$$dx_t = v_\theta(x_t, t, c)\, dt, \quad t: 1 \to 0, \quad x_1 \sim \mathcal{N}(0, I)$$
 
----
+During inference, an Euler (or higher-order) ODE solver runs this trajectory to produce a clean image $x_0$. This is the backbone of SD3, FLUX, and most state-of-the-art text-to-image/video models. The training loss is velocity matching MSE:
 
-## Sampling (inference after training)
+$$\mathcal{L}_\text{FM}(\theta) = \mathbb{E}_{t, x_0, x_1}\!\left[\Vert v_\theta(x_t, t, c) - (x_0 - x_1)\Vert^2\right], \quad x_t = (1-t)x_0 + t x_1$$
 
-Standard flow ODE (unchanged from pretrained model):
+The key property: **the ODE trajectory is deterministic** — given initial noise $x_1$, there is exactly one path to $x_0$.
 
-$$x_{t - \Delta t} = x_t - v_\theta(x_t, t, c)\Delta t, \quad t = 1, 1{-}\Delta t, \ldots, \Delta t$$
-with $x_1 \sim \mathcal{N}(0,I)$.
+### GRPO for LLMs (DeepSeek-R1, January 2025)
 
----
+GRPO (Group Relative Policy Optimization) replaces PPO's value network with a group-relative baseline. For a prompt $c$, generate $N_g$ responses $\{y^{(i)}\}$, evaluate each with reward $r^{(i)}$, and define the advantage:
 
-## Key contribution 1 — ODE-to-SDE conversion
+$$\hat{A}^{(i)} = \frac{r^{(i)} - \overline{r}}{\mathrm{std}(\{r^{(j)}\}) + \delta}$$
 
-To enable GRPO during **training**, replace the ODE with a stochastic variant that has the **same marginal** $p_t(x_t)$ at every $t$.
+The policy gradient uses a PPO-clip objective with per-token importance ratios $\rho_k^{(i)} = \pi_\theta(y_k^{(i)} | y_{<k}^{(i)}, c) / \pi_{\theta_\text{old}}(\cdots)$. These ratios are tractable because LLM policies are products of categorical softmax distributions — each token has a well-defined probability. GRPO proved highly effective for reasoning in text: cheap to implement (no value network), stable, and sample-efficient.
 
-Using the Fokker-Planck / continuity equation duality, the equivalent SDE is:
+### Why combining them is non-trivial
 
-$$dx_t = \underbrace{\left[v_\theta(x_t,t,c) + \frac{s_t^2}{2}\nabla_{x_t}\log p_t(x_t)\right]}_{\text{drift}} dt + s_t dW_t$$
+GRPO (and PPO generally) requires the importance ratio $\rho = \pi_\theta / \pi_{\theta_\text{old}}$ — the probability ratio of a trajectory under the current vs. old policy. For LLMs, each step contributes a softmax probability, making this straightforward.
 
-The score $\nabla_{x_t} \log p_t(x_t)$ is approximated via Tweedie's formula:
+For flow matching, the policy is a deterministic ODE step. A deterministic map assigns probability 1 to exactly one output and 0 everywhere else:
 
-$$\nabla_{x_t} \log p_t(x_t) \approx \frac{\hat x_0(x_t, t) - x_t}{t^2}, \quad \hat x_0 = x_t - t v_\theta(x_t, t, c)$$
+$$\pi_\theta(x_{t-\Delta t} \mid x_t, c) = \delta\!\left(x_{t-\Delta t} - \left[x_t - v_\theta(x_t, t, c)\,\Delta t\right]\right)$$
 
-**Euler-Maruyama discretisation** (one step from $t$ to $t - \Delta t$):
-
-$$x_{t-\Delta t} = x_t - v_\theta(x_t,t,c)\Delta t + \frac{s_t^2 \Delta t}{2t^2}\left(\hat x_0 - x_t\right) + s_t\sqrt{\Delta t}\epsilon_t, \quad \epsilon_t \sim \mathcal{N}(0,I)$$
-
-This step is a **Gaussian** with mean $\mu_\theta(x_t, t)$ and variance $s_t^2 \Delta t I$:
-
-$$\pi_\theta(x_{t-\Delta t} \mid x_t, c) = \mathcal{N}\left(x_{t-\Delta t}; \mu_\theta(x_t,t,c), s_t^2\Delta t I\right)$$
-
-The log-likelihood (used in the importance ratio) is:
-
-$$\log \pi_\theta(x_{t-\Delta t} \mid x_t, c) = -\frac{\Vert x_{t-\Delta t} - \mu_\theta(x_t,t,c)\Vert^2}{2 s_t^2\Delta t} + \text{const}$$
+This Dirac delta has **no useful density**. There is no $\log \pi_\theta$ to differentiate through, and no ratio $\rho_t$ to compute. Standard policy gradient algorithms cannot be applied as-is.
 
 ---
 
-## Key contribution 2 — Group advantage estimation
+## Problem 1 — ODE has no density; GRPO importance ratio is undefined
 
-Generate $N_g$ images $\lbrace x_0^{(i)}\rbrace_{i=1}^{N_g}$ for the **same** prompt $c$ using the SDE sampler:
+**Issue**: Flow matching uses a deterministic ODE. There is no per-step stochastic policy, no density $\pi_\theta(x_{t-\Delta t}|x_t)$, and therefore no importance ratio $\rho_t = \pi_\theta / \pi_{\theta_\text{old}}$. GRPO cannot be applied.
 
-$$\hat A^{(i)} = \frac{r^{(i)} - \overline r}{\text{std}(\lbrace r^{(j)}\rbrace) + \delta}, \quad \overline r = \frac{1}{N_g}\sum_{j=1}^{N_g} r^{(j)}$$
+**Idea**: Convert the deterministic ODE to a **stochastically equivalent SDE** that (a) preserves the marginal distribution $p_t(x_t)$ at every $t$, and (b) produces tractable per-step Gaussian log-probabilities.
 
-This is the standard GRPO advantage: group-normalised, zero-mean, unit-variance (approximately). It replaces the raw reward $r^{(i)}$ used in DDPO.
+**Why this works**: By the Fokker-Planck / continuity-equation duality, any probability flow ODE $\dot{x}_t = v(x_t, t)$ has a family of equivalent SDEs:
+
+$$dx_t = \left[v_\theta(x_t, t, c) + \frac{s_t^2}{2}\nabla_{x_t}\log p_t(x_t)\right] dt + s_t\, dW_t$$
+
+for any diffusion coefficient $s_t > 0$. The extra drift term $\frac{s_t^2}{2}\nabla \log p_t$ compensates the injected noise, so the marginal $p_t(x_t)$ is identical to the ODE's. FlowGRPO uses this as an engineering device: inject a small, controlled amount of stochasticity during training — enough to define a Gaussian density at each step — while keeping the model's learned distribution intact.
+
+### Approximating the score
+
+The score $\nabla_{x_t}\log p_t(x_t)$ is unknown, but can be approximated without any extra network via **Tweedie's formula**:
+
+$$\nabla_{x_t}\log p_t(x_t) \approx \frac{\hat{x}_0(x_t, t) - x_t}{t^2}, \quad \hat{x}_0 = x_t - t\, v_\theta(x_t, t, c)$$
+
+The velocity predictor $v_\theta$ already encodes the expected clean image $\hat{x}_0$; no additional model is needed.
+
+### Euler-Maruyama discretisation
+
+Discretising the SDE with step size $\Delta t$ gives one training step from $t$ to $t - \Delta t$:
+
+$$x_{t-\Delta t} = x_t - v_\theta(x_t, t, c)\,\Delta t + \frac{s_t^2\,\Delta t}{2t^2}\left(\hat{x}_0 - x_t\right) + s_t\sqrt{\Delta t}\,\epsilon_t, \quad \epsilon_t \sim \mathcal{N}(0, I)$$
+
+This step is **Gaussian** with tractable mean and variance:
+- Mean: $\mu_\theta(x_t, t, c) = x_t - v_\theta\,\Delta t + \dfrac{s_t^2\,\Delta t}{2t^2}(\hat{x}_0 - x_t)$
+- Variance: $s_t^2\,\Delta t\,I$
+
+The per-step policy density and log-probability are now defined:
+
+$$\pi_\theta(x_{t-\Delta t} \mid x_t, c) = \mathcal{N}\!\left(x_{t-\Delta t};\ \mu_\theta(x_t, t, c),\ s_t^2\,\Delta t\,I\right)$$
+
+$$\log \pi_\theta(x_{t-\Delta t} \mid x_t, c) = -\frac{\|x_{t-\Delta t} - \mu_\theta(x_t, t, c)\|^2}{2\,s_t^2\,\Delta t} + \mathrm{const}$$
+
+The importance ratio at step $t$ for sample $i$ is:
+
+$$\rho_t^{(i)} = \frac{\pi_\theta(x_{t-\Delta t}^{(i)} \mid x_t^{(i)}, c)}{\pi_{\theta_\text{old}}(x_{t-\Delta t}^{(i)} \mid x_t^{(i)}, c)} = \exp\!\left(-\frac{\|x_{t-\Delta t}^{(i)} - \mu_\theta\|^2 - \|x_{t-\Delta t}^{(i)} - \mu_{\theta_\text{old}}\|^2}{2\,s_t^2\,\Delta t}\right)$$
+
+GRPO can now be applied step-by-step, structurally identical to how it operates in LLMs.
 
 ---
 
-## Training objective
+## Problem 2 — Per-sample reward has high variance
 
-PPO-clipped GRPO objective summed over all $T$ training steps:
+**Issue**: Using the raw reward $r^{(i)}$ as the policy gradient signal is high-variance (REINFORCE-style). Rewards vary across prompts; a good score for one prompt may be mediocre for another. This makes learning unstable.
+
+**Idea**: Adopt GRPO's group-relative advantage. Generate $N_g$ images $\{x_0^{(i)}\}_{i=1}^{N_g}$ for the **same** prompt $c$, then normalise rewards within the group:
+
+$$\hat{A}^{(i)} = \frac{r^{(i)} - \overline{r}}{\mathrm{std}(\{r^{(j)}\}) + \delta}, \quad \overline{r} = \frac{1}{N_g}\sum_{j=1}^{N_g} r^{(j)}$$
+
+**Why this works**: The group mean acts as a prompt-specific baseline, removing variance due to prompt difficulty. Standard-deviation normalisation makes gradients scale-invariant across reward models and prompt batches — the same technique that made GRPO effective in LLM reasoning, transplanted to visual generation. This replaces the raw reward $r^{(i)}$ used in predecessor work (DDPO).
+
+---
+
+## Problem 3 — Full $T$-step gradient computation is expensive
+
+**Issue**: Computing gradients through all $T$ SDE steps requires storing all intermediate activations — $O(T \cdot d)$ memory per sample and $O(T)$ sequential compute. With $T=40$ inference steps, this is prohibitive.
+
+**Idea 1 — Denoising reduction**: Use $T_\text{train} \ll T_\text{inf}$ steps during training. Reducing from $T_\text{inf}=40$ to $T_\text{train}=10$ preserves the learning signal (reward is still computed at $x_0$) at $1/4$ the memory cost.
+
+**Idea 2 — FlowGRPO-Fast**: Run a full ODE trajectory (no gradient tracking) to a randomly chosen branch point $t^*$, then take one SDE step $N_g$ times in parallel:
+
+$$x_1 \xrightarrow[\text{no grad}]{\text{ODE}} x_{t^*} \xrightarrow[\times N_g]{\text{1-step SDE}} \{x_{t^*-\Delta t}^{(i)}\} \xrightarrow[\text{no grad}]{\text{ODE}} \{x_0^{(i)}\}$$
+
+**Why Fast works**: The reward is evaluated at $x_0$, not at $t^*$. The single SDE branch injects enough diversity — through independent noise — for the group advantage $\hat{A}^{(i)}$ to provide a useful gradient signal. Only 1–2 gradient-tracked steps are needed per trajectory, reducing memory cost by $\sim T_\text{train}$× compared to a full rollout.
+
+---
+
+## Training Objective
+
+Combining the solutions to all three problems: PPO-clipped GRPO objective summed over all training steps:
 
 $$\boxed{
-\mathcal{L}_\text{FlowGRPO}(\theta) = -\mathbb{E}_{c,\lbrace x_0^{(i)}\rbrace}\left[\frac{1}{N_g}\sum_{i=1}^{N_g} \frac{1}{T}\sum_{t=1}^{T} \min\left(\rho_t^{(i)}\hat A^{(i)}, \text{clip}\left(\rho_t^{(i)}, 1{-}\epsilon, 1{+}\epsilon\right)\hat A^{(i)}\right)\right] + \beta D_\text{KL}(\pi_\theta \Vert \pi_\text{ref})
+\mathcal{L}_\text{FlowGRPO}(\theta) = -\mathbb{E}_{c,\{x_0^{(i)}\}}\!\left[\frac{1}{N_g}\sum_{i=1}^{N_g}\frac{1}{T}\sum_{t=1}^{T} \min\!\left(\rho_t^{(i)}\hat{A}^{(i)},\ \mathrm{clip}\!\left(\rho_t^{(i)}, 1{-}\epsilon, 1{+}\epsilon\right)\hat{A}^{(i)}\right)\right] + \beta\,D_\mathrm{KL}(\pi_\theta \Vert \pi_\mathrm{ref})
 }$$
 
-where:
-
-$$\rho_t^{(i)} = \frac{\pi_\theta(x_{t-\Delta t}^{(i)} \mid x_t^{(i)}, c)}{\pi_{\theta_\text{old}}(x_{t-\Delta t}^{(i)} \mid x_t^{(i)}, c)} = \exp\left(-\frac{\Vert x_{t-\Delta t}^{(i)} - \mu_\theta\Vert^2 - \Vert x_{t-\Delta t}^{(i)} - \mu_{\theta_\text{old}}\Vert^2}{2s_t^2\Delta t}\right)$$
+where $\rho_t^{(i)}$ is the per-step importance ratio (Problem 1), $\hat{A}^{(i)}$ is the group-relative advantage (Problem 2), and $T = T_\text{train}$ may be reduced per Problem 3.
 
 ---
 
-## Key contribution 3 — Denoising reduction
-
-**Problem**: computing gradients through all $T$ SDE steps is $O(T)$ memory. Typical $T=10$ during training vs. $T=40$ at inference.
-
-**Solution**: use a smaller $T_\text{train} \ll T_\text{inf}$. The policy is evaluated on $T_\text{train}=10$ SDE steps, giving almost the same learning signal at $1/4$ the memory cost.
-
-### Flow-GRPO-Fast variant
-
-Even cheaper: generate a **full ODE trajectory** first (no gradient tracking), then at one randomly chosen timestep $t^{\ast}$ branch into $N_g$ SDE samples:
-
-$$x_{t^{\ast}} \xrightarrow{\text{ODE, no grad}} \text{(shared prefix)} \quad \xrightarrow{1\text{-step SDE}} \lbrace x_{t^{\ast}-\Delta t}^{(i)}\rbrace_{i=1}^{N_g}$$
-
-Only 1–2 gradient-tracked steps per trajectory. Reward is still computed at $x_0$ (run ODE from $x_{t^{\ast}-\Delta t}^{(i)}$ to $x_0^{(i)}$ without gradient tracking). Matches reward performance at significantly reduced cost.
-
----
-
-## Training algorithm
+## Algorithm
 
 ```
-Input: pretrained v_θ, reward model r, prompt dist p_c, group size N_g
+Input: pretrained v_θ, reward model r, prompt distribution p_c, group size N_g
+
 Repeat:
   1. Sample prompts {c_j}
   2. For each c_j, generate N_g trajectories via SDE (T_train steps):
-       x_1 ~ N(0,I) [shared noise for all group members]
+       x_1 ~ N(0,I)   [shared initial noise for all group members]
        For t = 1, 1-Δt, ..., Δt:
          For i = 1,...,N_g:
-           μ_θ_old ← drift(v_{θ_old}, x_t^(i), t)
-           x_{t-Δt}^(i) = μ_θ_old + s_t√(Δt) · ε_t^(i)
-       x_0^(i) obtained at t=0
+           x̂_0       ← x_t - t · v_{θ_old}(x_t^(i), t, c_j)         # Tweedie estimate
+           μ_{θ_old} ← x_t - v_{θ_old}·Δt + (s_t²Δt / 2t²)·(x̂_0 - x_t)
+           x_{t-Δt}^(i) ← μ_{θ_old} + s_t√Δt · ε,  ε ~ N(0,I)
   3. Compute rewards R^(i) = r(x_0^(i), c_j)
-  4. Compute group advantages Â^(i) = (R^(i) - mean) / std
-  5. For K gradient steps (reusing trajectories):
-       Compute ρ_t^(i) = π_θ(x_{t-Δt}^(i)|x_t^(i),c) / π_{θ_old}(...)
-       L = -mean[clip-ratio × Â] + β·KL
-       θ ← θ - η ∇_θ L
+  4. Group advantage: Â^(i) = (R^(i) - mean_j R^(j)) / std_j R^(j)
+  5. For K gradient steps (reusing stored trajectories):
+       For each step t, sample i:
+         μ_θ     ← x_t - v_θ·Δt + (s_t²Δt / 2t²)·(x̂_0 - x_t)       # current θ
+         ρ_t^(i) ← exp(-(‖x_{t-Δt}^(i) - μ_θ‖² - ‖x_{t-Δt}^(i) - μ_{θ_old}‖²) / (2s_t²Δt))
+         L ← -mean[ clip(ρ_t^(i), 1-ε, 1+ε) · Â^(i) ] + β·KL(π_θ ‖ π_ref)
+         θ ← θ - η ∇_θ L
   6. θ_old ← θ
+
+FlowGRPO-Fast variant (replaces steps 2–3):
+  2'. Run full ODE x_1 → x_0 without gradient tracking; record state x_{t*} at random t*
+  3'. For i = 1,...,N_g:
+        Take one SDE step x_{t*} → x_{t*-Δt}^(i)  [with gradient tracking]
+        Run ODE x_{t*-Δt}^(i) → x_0^(i)  [no grad]  →  compute R^(i)
 ```
-
----
-
-## Comparison to DDPO
-
-| Aspect | DDPO | FlowGRPO |
-|---|---|---|
-| Model family | DDPM ($\epsilon_\theta$) | Flow matching ($v_\theta$) |
-| Policy density | Native (DDPM stochastic) | ODE-to-SDE conversion |
-| Advantage | Raw reward $r$ | Group-normalised $\hat A^{(i)}$ |
-| Objective | IS-weighted REINFORCE / PPO | PPO-clip GRPO |
-| Efficiency | All $T$ steps with grad | Denoising reduction $T_\text{train} \ll T_\text{inf}$ |
 
 ---
 
@@ -148,5 +173,5 @@ Repeat:
 | SDE noise → image artifacts → misleads reward model | [CPS](cps.md) |
 | Importance ratio $\rho_t$ mean $<1$, varying variance → reward hacking | [GRPO-Guard](grpo_guard.md) |
 | SDE sampler blocks fast ODE; still expensive | [MixGRPO](mix_grpo.md), [AWM](../decoupled/awm.md) |
-| Pretraining objective ≠ GRPO objective | [AWM](../decoupled/awm.md) |
-| Requires SDE → no ODE samplers | [DGPO](../decoupled/dgpo.md) |
+| Pretraining objective $\neq$ GRPO objective | [AWM](../decoupled/awm.md) |
+| Requires SDE → incompatible with ODE-only samplers | [DGPO](../decoupled/dgpo.md) |

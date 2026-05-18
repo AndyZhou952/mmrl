@@ -1,135 +1,135 @@
 # SRPO — Directly Aligning the Full Diffusion Trajectory with Fine-Grained Human Preference
 
-> Notation: follows [NOTATION.md](../NOTATION.md). Target model is FLUX.1-dev (flow matching).  
-> For flow matching: $x_t = (1-t)x_0 + t\epsilon$, so $\alpha_t = 1-t$, $\sigma_t = t$.  
-> Local symbol: $\epsilon_\text{gt}$ — the ground-truth noise used in the forward pass, held fixed as a per-image training prior.
+> Notation: follows [NOTATION.md](../NOTATION.md). Target model: FLUX.1-dev (flow matching). Flow convention: $x_t = (1-t)x_0 + t\epsilon$, so $\alpha_t = 1-t$, $\sigma_t = t$. Local symbol: $\epsilon_\text{gt}$ — the ground-truth noise for a specific image, held fixed as a training-time prior.
 
 | Field | Value |
 |---|---|
 | **arXiv** | [2509.06942](https://arxiv.org/abs/2509.06942) |
 | **Submitted** | 2025-09-08 |
-| **Venue** | — |
+| **Venue** | — (preprint) |
 | **Authors** | Xiangwei Shen, Zhimin Li, Zhantao Yang, Shiyi Zhang, Yingfang Zhang, Donghao Li, Chunyu Wang, Qinglin Lu, Yansong Tang |
 | **Affiliation** | Tencent Hunyuan; CUHK-Shenzhen; Tsinghua University |
 | **GitHub** | https://github.com/Tencent-Hunyuan/SRPO |
-| **Domain** | Online RL for image generation (FLUX.1-dev) |
-| **Paradigm** | Decoupled — no SDE, no multi-step denoising gradients |
+| **Paradigm** | **Decoupled** — no SDE, no multi-step denoising gradients; single-step closed-form recovery |
 | **Cites** | DDPO, FlowGRPO, DanceGRPO, ReFL, DRaFT |
-| **Cited by** | HunyuanImage 3.0 pipeline (MixGRPO → SRPO → ReDA) |
+| **Cited by** | HunyuanImage 3.0 pipeline (MixGRPO → SRPO → ReDA stages) |
 
 ---
 
-## Problem Being Solved
+## Context
 
-Prior direct-reward alignment methods (ReFL, DRaFT) backpropagate reward gradients through the multi-step denoising chain. Two problems arise:
-
-1. **Gradient cost:** Computing gradients through $T$ denoising steps is expensive; in practice only a few late steps are trained, leaving early high-noise steps unaligned.
-2. **Reward model staleness:** Capturing fine-grained aesthetic properties (photorealism, lighting) requires continuous offline re-training of the reward model to keep up with the shifting policy distribution.
-
-SRPO introduces two components that address each problem independently: **Direct-Align** eliminates multi-step backpropagation; the **SRPO reward** eliminates the need to re-train the reward model.
+SRPO introduces two independent innovations that can be used separately or together: (1) **Direct-Align**, a training procedure that aligns the model to a reward using a closed-form noise-recovery step instead of multi-step rollouts; and (2) the **SRPO Reward**, a self-normalising relative score that does not require periodic re-training of the reward model. Both target FLUX.1-dev (flow matching), and both are entirely decoupled — no SDE sampler, no GRPO importance ratio, no KL divergence against a frozen reference.
 
 ---
 
-## Core Innovation 1: Direct-Align
+## Problem 1 — Backpropagating reward gradients through $T$ denoising steps is expensive and leaves early steps unaligned
 
-### Key equation
+**Issue**: Direct reward alignment methods (ReFL, DRaFT) backpropagate through the multi-step ODE trajectory: $x_T \to x_{T-1} \to \cdots \to x_0 \to r$. Memory and compute scale linearly with $T$. In practice, only the last few steps are included in the computation graph, leaving early high-noise steps — which control the global structure of the image — completely unaligned to the reward.
 
-The forward process places $x_t$ on a linear interpolation between $x_0$ and $\epsilon$:
+**Idea — Direct-Align**: Exploit the known noise prior. In flow matching, the forward process places $x_t$ on a linear path between the image $x_0$ and a fixed noise sample $\epsilon_\text{gt}$:
 
-$$x_t = \alpha_tx_0 + \sigma_t\epsilon_\text{gt}$$
+$$x_t = (1-t)x_0 + t\,\epsilon_\text{gt}$$
 
-If the noise $\epsilon_\text{gt}$ used to construct $x_t$ is known, the clean image is recovered in **one closed-form step** — no network denoising required:
+If $\epsilon_\text{gt}$ is known (fixed at the start of training for each image), the clean image can be recovered **in one step**:
 
-$$\hat x_0 = \frac{x_t - \sigma_t\epsilon_\text{gt}}{\alpha_t}$$
+$$\hat{x}_0 = \frac{x_t - t\,\epsilon_\text{gt}}{1-t}$$
 
-For flow matching (FLUX): $\alpha_t = 1-t$, $\sigma_t = t$, so $\hat x_0 = \dfrac{x_t - t\epsilon_\text{gt}}{1-t}$.
+This uses the same Tweedie formula as [NOTATION.md §3](../NOTATION.md), but substitutes the **known** $\epsilon_\text{gt}$ instead of the network's prediction — making recovery exact and bypassing multi-step denoising entirely.
 
-This uses the same structure as Tweedie's formula in [NOTATION.md §3](../NOTATION.md), but substitutes the **known** $\epsilon_\text{gt}$ instead of the network's noise prediction, making it exact and gradient-free on the denoising path.
+**Why this works**: The gradient $\partial r / \partial \theta$ passes through only **one network call** $v_\theta(x_t, t, c)$. There is no rollout, no iterative denoising chain, no trajectory storage. The reward gradient flows back through a single velocity prediction, making this $T\times$ cheaper than full-chain backpropagation. Because $t$ is sampled uniformly over $[0,1]$, every noise level (including early high-noise steps) participates in training — all timesteps are aligned, not just the last few.
 
-### Training procedure
+### Training procedure (Direct-Align)
 
-1. Fix a **noise prior** $\epsilon_\text{gt} \sim \mathcal{N}(0,I)$ per image at the start of training (held constant throughout).
-2. At each training step, sample a timestep $t$ uniformly; construct $x_t = (1-t)x_0 + t\epsilon_\text{gt}$.
-3. Apply one network forward pass to obtain $v_\theta(x_t, t, c)$.
-4. Recover $\hat x_0$ via the closed-form equation above.
-5. Score $\hat x_0$ with the reward model; backpropagate the reward gradient through the single closed-form step to $v_\theta$.
+1. Fix a noise prior $\epsilon_\text{gt} \sim \mathcal{N}(0,I)$ per image at the start of training (held constant).
+2. At each step: sample $t \sim \mathrm{Uniform}[0,1]$; construct $x_t = (1-t)x_0 + t\,\epsilon_\text{gt}$.
+3. One network forward pass: compute $v_\theta(x_t, t, c)$.
+4. Closed-form recovery: $\hat{x}_0 = (x_t - t\,\epsilon_\text{gt}) / (1-t)$.
+5. Score: $r(\hat{x}_0, c)$; backpropagate through steps 4→3→$\theta$.
 
-Gradient flows through exactly **one network call** per timestep — no rollout, no iterative denoising. Multiple timesteps are aggregated with a decaying discount:
+Multiple timesteps are combined with a discounting factor that down-weights the very high-noise end:
 
-$$\mathcal{L}_\text{DA}(\theta) = -\mathbb{E}_t\left[\gamma^{T-t}r(\hat x_0(x_t, \epsilon_\text{gt}),c)\right]$$
+$$\mathcal{L}_\text{DA}(\theta) = -\mathbb{E}_t\!\left[\gamma^{T-t}\,r\!\left(\hat{x}_0(x_t, \epsilon_\text{gt}), c\right)\right]$$
 
-where $\gamma \in (0,1]$ down-weights very early (high-noise) timesteps where recovery is less precise.
+### Inversion regularisation
 
-### Inversion regularization
-
-An additional **inversion branch** applies gradient descent in the direction of noise injection ($+\epsilon_\text{gt}$), penalizing overfitting to the reward in late timesteps. This acts as an implicit regularizer without requiring a separate reference model or KL divergence term.
+To prevent overfitting to the reward at late (low-noise) timesteps, SRPO adds an **inversion branch**: a gradient step in the direction of noise injection ($+\epsilon_\text{gt}$). This penalises solutions that exploit the mapping for late $t$ without genuinely improving image quality. The regularisation acts as an implicit anchor without requiring a frozen reference model or KL term.
 
 ---
 
-## Core Innovation 2: SRPO Reward (Semantic Relative Preference Optimization)
+## Problem 2 — Absolute reward models drift out of distribution as the policy improves
 
-### Motivation
+**Issue**: Reward models trained on a fixed dataset (HPSv2.1, PickScore) assign scores relative to a fixed distribution. As the policy improves, the generated images leave the training distribution of the reward model, causing the reward signal to become unreliable. Periodic re-training of the reward model is expensive and introduces a moving-target dynamic.
 
-Absolute reward models (HPSv2.1, PickScore) drift out of distribution as the policy improves, requiring periodic re-training. The SRPO reward computes a **relative score** between a positive and a negative text condition applied to the same generated image, making it self-normalizing:
+**Idea — SRPO Reward (Semantic Relative Preference)**: Instead of an absolute score, compute a **relative score** between a positive and a negative text condition applied to the same generated image:
 
-$$r_\text{SRP}(x_0, c) = f_\text{img}(x_0)^\top C_+ - f_\text{img}(x_0)^\top C_- = f_\text{img}(x_0)^\top (C_+ - C_-)$$
+$$r_\text{SRP}(x_0, c) = f_\text{img}(x_0)^\top (C_+ - C_-)$$
 
 where:
-- $f_\text{img}(x_0)$: image embedding from the reward model (HPSv2.1, PickScore, or CLIP)
-- $C_+ = \text{embed}(c_+)$: embedding of a **positive** text condition, e.g., *"a photo-realistic image"*
-- $C_- = \text{embed}(c_-)$: embedding of a **negative** text condition, e.g., *"an AI-generated image"*
+- $f_\text{img}(x_0)$: image embedding (from HPSv2.1, PickScore, or CLIP)
+- $C_+ = \mathrm{embed}(c_+)$: embedding of a *positive* condition, e.g., *"a photo-realistic image"*
+- $C_- = \mathrm{embed}(c_-)$: embedding of a *negative* condition, e.g., *"an AI-generated image"*
 
-### Properties
+**Why this works**: The reward is a **difference** between two alignment scores. If the policy improves by becoming more photorealistic, $f_\text{img}(x_0)^\top C_+$ increases while $f_\text{img}(x_0)^\top C_-$ decreases — the difference magnifies the signal. Crucially, the relative score is computed entirely by the frozen reward model's embedding function: no additional training is needed. Changing the optimisation target (e.g., from photorealism to oil-painting style) requires only swapping $(c_+, c_-)$.
 
 | Property | Effect |
 |---|---|
-| No offline reward re-training | Changing aesthetic direction requires only swapping $(c_+, c_-)$ |
-| Built-in regularization | Negative branch penalizes "AI look"; difference is self-normalizing |
-| Online adjustment | Reward adapts to the current policy distribution by construction |
-| Model-agnostic | Works with any reward model that computes image-text similarity |
+| No reward model re-training | Score adapts to policy shifts via the difference structure |
+| Built-in negative regularisation | Negative branch penalises "AI-generated" aesthetics |
+| Model-agnostic | Works with any image-text embedding model |
+| Adjustable direction | New aesthetic objective = new $(c_+, c_-)$ pair |
 
 ---
 
 ## Combined Training Objective
 
-$$\mathcal{L}_\text{SRPO}(\theta) = -\mathbb{E}_{c,t,\epsilon_\text{gt}}\left[\gamma^{T-t}r_\text{SRP}\left(\hat x_0(x_t, \epsilon_\text{gt}),c\right)\right] + \lambda\mathcal{L}_\text{inv}(\theta)$$
+$$\boxed{\mathcal{L}_\text{SRPO}(\theta) = -\mathbb{E}_{c,t,\epsilon_\text{gt}}\!\left[\gamma^{T-t}\,r_\text{SRP}\!\left(\hat{x}_0(x_t, \epsilon_\text{gt}), c\right)\right] + \lambda\,\mathcal{L}_\text{inv}(\theta)}$$
 
-where $\mathcal{L}_\text{inv}$ is the inversion regularization term and $\lambda$ balances reward vs. regularization.
-
-**No KL divergence. No frozen reference model. No SDE sampler required.**
+No KL divergence. No frozen reference model. No SDE sampler required.
 
 ---
 
-## Results
+## Algorithm
 
-On FLUX.1-dev (500 prompts, human evaluation with 10 annotators + 3 domain experts):
+```
+Input: pretrained v_θ (FLUX.1-dev), reward embedder f_img, text pairs (c_+, c_-),
+       discount γ, regularisation weight λ
+Initialize: for each training image x_0, fix ε_gt ~ N(0,I)
 
-| Metric | Baseline (FLUX) | SRPO | Gain |
-|---|---|---|---|
-| Realism ("excellent" rate) | 8.2% | 38.9% | +3.7× |
-| Aesthetic quality | — | — | +3.1× |
-
-Training efficiency: converges in under 10 minutes on 32 H20 GPUs; 75× faster than DanceGRPO (full-SDE baseline).
-
-Ranked #1 on Artificial Analysis Leaderboard for open-source T2I models (October 2025).
+Repeat:
+  1. Sample prompt c and training image x_0 (or generate one)
+  2. Sample t ~ Uniform[0,1]
+  3. Construct noised image:  x_t = (1-t)·x_0 + t·ε_gt
+  4. Forward pass:  v_θ_out = v_θ(x_t, t, c)
+  5. Closed-form recovery:  x̂_0 = (x_t - t·ε_gt) / (1-t)      ← one step, no rollout
+  6. SRPO reward:
+       r = f_img(x̂_0)ᵀ (C_+ - C_-)                             ← no reward model training
+  7. Reward loss:  L_DA = -γ^(T-t) · r
+  8. Inversion regularisation:
+       x_t^inv = (1-t)·x_0 + t·(−ε_gt)                         ← noise injection direction
+       L_inv = ||v_θ(x_t^inv, t, c) - target||²
+  9. Total:  L = L_DA + λ·L_inv
+  10. θ ← θ - η ∇_θ L
+```
 
 ---
 
-## Relation to Other Methods in This Repo
+## Comparison to Other Methods
 
 | Aspect | SRPO | FlowGRPO | MixGRPO | AWM | DGPO |
 |---|---|---|---|---|---|
-| SDE required | **No** | Yes | Partial (window) | No | No |
-| Gradient path | 1 closed-form step | $T$ SDE steps | $\lvert W\rvert$ SDE steps | Advantage-weighted loss | ELBO preference |
-| Reference model | **No** (inversion reg.) | Yes ($\pi_\text{ref}$) | Yes | Yes | Yes |
-| Reward model training | **No re-training** (relative reward) | Scalar ORM | Scalar ORM | Scalar ORM | Preference pairs |
-| Training time | <10 min / 32 H20 | Hours | ~50% of Flow-GRPO | — | ~20× faster than SDE |
-| Target model | FLUX.1-dev | SD3.5-M | HunyuanVideo DiT | Various | Various |
+| SDE required | **No** | Yes | Partial | No | No |
+| Gradient path | 1 network call / $t$ | $T$ SDE steps | $w$ SDE steps | Advantage-weighted loss | ELBO preference |
+| Reference model | **No** (inversion reg.) | Yes | Yes | Yes | Yes |
+| Reward re-training | **No** (relative reward) | Scalar ORM | Scalar ORM | Scalar ORM | Preference pairs |
+| Training time (32× H20) | $<$10 min | Hours | ~50% of FlowGRPO | — | ~5% of FlowGRPO |
+| Target model | FLUX.1-dev | SD3.5-M, FLUX | HunyuanVideo | Various | Various |
+
+Reported: ranked #1 on Artificial Analysis Leaderboard for open-source T2I (October 2025); 75× faster than DanceGRPO full-SDE baseline.
 
 ---
 
 ## Limitations
 
-- Recovery accuracy degrades at very high noise levels ($t \approx 1$); mitigated by the discount factor $\gamma^{T-t}$.
-- SRPO reward is only as discriminative as the text encoder's ability to separate $c_+$ and $c_-$ semantically; out-of-vocabulary aesthetic dimensions are poorly captured.
-- The fixed noise prior $\epsilon_\text{gt}$ means each training image follows a fixed noising trajectory — limits diversity of the gradient signal vs. stochastic SDE rollouts.
+- Recovery accuracy degrades at very high noise levels ($t \approx 1$) — mitigated by the discount $\gamma^{T-t}$ which down-weights early timesteps.
+- The SRPO reward is only as discriminative as the text encoder's ability to separate $(c_+, c_-)$ semantically; aesthetic directions poorly captured by CLIP embeddings will produce weak signals.
+- The fixed noise prior $\epsilon_\text{gt}$ per image means each training image follows a fixed noising trajectory — limits gradient diversity compared to stochastic SDE rollouts.

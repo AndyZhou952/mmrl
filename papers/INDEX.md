@@ -3,17 +3,21 @@
 Master reference for all papers in this repository.
 Sorted chronologically. Citation edges: → means "is cited by".
 
+For a narrative explanation of how one algorithm leads to the next, see [READING_GUIDE.md](READING_GUIDE.md).
+
 ---
 
 ## Paradigm overview
 
 | Paradigm | Defining property | Papers |
 |---|---|---|
-| **Coupled** | Training tied to SDE sampling; log-prob at each step required | DDPO, FlowGRPO, DanceGRPO, MixGRPO + fixes (CPS, GRPO-Guard), UniGRPO |
+| **Coupled** | Training tied to SDE sampling; log-prob at each step required | FlowGRPO, DanceGRPO, MixGRPO + fixes (CPS, GRPO-Guard), UniGRPO |
 | **Decoupled** | Solver-agnostic; no log-prob over denoising steps | Diffusion-DPO, SRPO, DiffusionNFT, AWM, DGPO |
-| **Offline / other** | No online rollouts; or different domain (robotics) | Diffusion-DPO (offline) |
+| **Offline / other** | No online rollouts | Diffusion-DPO (offline) |
 
 Reference: [Flow-Factory algorithm taxonomy](https://github.com/X-GenGroup/Flow-Factory/blob/main/guidance/algorithms.md)
+
+Historical precursors (no dedicated files in this repo): **DDPO** ([2305.13301](https://arxiv.org/abs/2305.13301), ICLR 2024) — first diffusion MDP; **Diffusion-DPO** ([2311.12908](https://arxiv.org/abs/2311.12908), CVPR 2024) — offline DPO via diffusion ELBO.
 
 ---
 
@@ -21,10 +25,8 @@ Reference: [Flow-Factory algorithm taxonomy](https://github.com/X-GenGroup/Flow-
 
 | Short name | Full title | arXiv | Date | Venue | Notes file |
 |---|---|---|---|---|---|
-| **DDPO** | Training Diffusion Models with Reinforcement Learning | [2305.13301](https://arxiv.org/abs/2305.13301) | 2023-05-22 | ICLR 2024 | [foundations/ddpo.md](foundations/ddpo.md) |
-| **SRPO** | Directly Aligning the Full Diffusion Trajectory with Fine-Grained Human Preference | [2509.06942](https://arxiv.org/abs/2509.06942) | 2025-09-08 | — | [decoupled/srpo.md](decoupled/srpo.md) |
-| **Diffusion-DPO** | Diffusion Model Alignment Using Direct Preference Optimization | [2311.12908](https://arxiv.org/abs/2311.12908) | 2023-11-21 | CVPR 2024 | [foundations/diffusion_dpo.md](foundations/diffusion_dpo.md) |
 | **FlowGRPO** | Flow-GRPO: Training Flow Matching Models via Online RL | [2505.05470](https://arxiv.org/abs/2505.05470) | 2025-05-08 | NeurIPS 2025 | [coupled/flow_grpo.md](coupled/flow_grpo.md) |
+| **SRPO** | Directly Aligning the Full Diffusion Trajectory with Fine-Grained Human Preference | [2509.06942](https://arxiv.org/abs/2509.06942) | 2025-09-08 | — | [decoupled/srpo.md](decoupled/srpo.md) |
 | **DanceGRPO** | DanceGRPO: Unleashing GRPO on Visual Generation | [2505.07818](https://arxiv.org/abs/2505.07818) | 2025-05-12 | — | [coupled/dance_grpo.md](coupled/dance_grpo.md) |
 | **MixGRPO** | MixGRPO: Unlocking Flow-based GRPO Efficiency with Mixed ODE-SDE | [2507.21802](https://arxiv.org/abs/2507.21802) | 2025-07-29 | — | [coupled/mix_grpo.md](coupled/mix_grpo.md) |
 | **CPS** | Coefficients-Preserving Sampling for RL with Flow Matching | [2509.05952](https://arxiv.org/abs/2509.05952) | 2025-09-07 | — | [coupled/cps.md](coupled/cps.md) |
@@ -41,20 +43,17 @@ Reference: [Flow-Factory algorithm taxonomy](https://github.com/X-GenGroup/Flow-
 Each edge `A → B` means "A is cited by B" (B builds on A).
 
 ```
-DDPO (2023-05, coupled root)
+DDPO (2023-05, coupled precursor — no file in this repo)
   → FlowGRPO, DanceGRPO, MixGRPO, CPS, DiffusionNFT, AWM, DGPO, GRPO-Guard
 
-GRPO/PPO (DeepSeek-R1, 2024-01, not in this repo)
+GRPO/PPO (DeepSeek-R1, January 2025 — not in this repo)
   → FlowGRPO, DanceGRPO, MixGRPO, DGPO
 
-Diffusion-DPO (2023-11, decoupled root)
+Diffusion-DPO (2023-11, decoupled precursor — no file in this repo)
   → DGPO (extends group-level DPO to online setting)
-  → [offline DPO comparison baseline for all coupled methods]
+  → [offline DPO comparison baseline for coupled methods]
 
-SRPO (2025-09, Tencent)
-  → [cited by: HunyuanImage 3.0 pipeline (stage 4); no downstream dependants in this repo yet]
-
-FlowGRPO (2025-05)
+FlowGRPO (2025-05) — first to apply GRPO to flow matching
   → MixGRPO, CPS, DiffusionNFT, AWM, GRPO-Guard, DGPO
 
 DanceGRPO (2025-05)
@@ -65,29 +64,30 @@ MixGRPO (2025-07)
 
 CPS (2025-09)
   → [plug-in fix for coupled methods; no downstream dependants yet]
+
+SRPO (2025-09, Tencent)
+  → [cited by: HunyuanImage 3.0 pipeline (stage 4); no downstream dependants in this repo yet]
 ```
 
 Paradigm lineage:
 
 ```
-                   ┌─── DDPO (2023) ─────────────────────────────────────────┐
-                   │   (coupled root: MDP over denoising)                    │ (DPO from LLMs)
-                   │                                                          ▼
-                   │                                               Diffusion-DPO (2023)
-                   │                                               (decoupled root: ELBO DPO)
-                   │                                                          │
-                   │    (+GRPO from LLMs, 2024)                               │
-                   ▼                                                          │
-        COUPLED PARADIGM                                          DECOUPLED PARADIGM
-        (SDE required)                                            (any ODE solver)
-        ─────────────────                                         ─────────────────
-        FlowGRPO ─┬─ Fast variant                                DGPO
-        DanceGRPO ─┤                                              DiffusionNFT
-        MixGRPO ───┤─ Flash variant                               AWM
-                   │
-           ┌───────┴────────┐
-           CPS          GRPO-Guard
-         (noise fix)  (ratio fix)
+  DDPO (2023, precursor)          Diffusion-DPO (2023, precursor)
+  (MDP over denoising)            (offline DPO via ELBO)
+         │                                  │
+         │   + GRPO from LLMs               │
+         │     (Jan 2025)                   │
+         ▼                                  ▼
+  COUPLED PARADIGM                DECOUPLED PARADIGM
+  (SDE required)                  (any ODE solver)
+  ─────────────────               ─────────────────
+  FlowGRPO ─┬─ Fast variant       DGPO
+  DanceGRPO ─┤                     DiffusionNFT
+  MixGRPO ───┤─ Flash variant      AWM
+             │                     SRPO
+     ┌───────┴────────┐
+     CPS          GRPO-Guard
+   (noise fix)  (ratio fix)
 ```
 
 ---

@@ -1,6 +1,6 @@
 # GRPO-Guard — Mitigating Implicit Over-Optimization via Regulated Clipping
 
-> Notation: follows [NOTATION.md](../NOTATION.md). $\rho_t^{(i)}$ = importance ratio at step $t$ for sample $i$; $\hat\rho_t^{(i)}$ = normalised ratio (after RatioNorm). Gradient reweighting factor $\delta_t$.
+> Notation: follows [NOTATION.md](../NOTATION.md). Raw importance ratio: $\rho_t^{(i)}$; RatioNorm-normalised ratio: $\hat\rho_t^{(i)}$; policy mean shift: $\Delta\mu_t = \mu_\theta - \mu_{\theta_\text{old}}$; gradient reweighting factor: $\delta_t$.
 
 | Field | Value |
 |---|---|
@@ -8,127 +8,114 @@
 | **Submitted** | 2025-10-25 (revised 2025-10-30) |
 | **Venue** | — (preprint) |
 | **Authors** | Jing Wang, Jiajun Liang, Jie Liu, Henglin Liu, Gongye Liu, Jun Zheng, Wanyuan Pang, Ao Ma, Zhenyu Xie, Xintao Wang, Meng Wang, Pengfei Wan, Xiaodan Liang |
-| **Paradigm** | **Coupled** (modifies the ratio computation inside the GRPO objective) |
+| **Paradigm** | **Coupled** — modifier applied inside the GRPO objective; no change to sampling |
 | **Cites** | FlowGRPO (2505.05470), DanceGRPO (2505.07818), PPO, GRPO (DeepSeek-R1) |
 
 ---
 
-## Motivation
+## Context
 
-PPO clipping assumes the importance ratio $\rho_t$ is centred near 1 and has similar variance across update steps. In flow-matching GRPO, empirical analysis shows:
-1. **Mean of $\rho_t$ is systematically below 1** — the new policy overshoots the old policy's mean, so the ratio distribution is left-shifted.
-2. **Variance of $\rho_t$ differs substantially across timesteps** — early denoising steps (high noise level $t$) have small variance; late steps (low $t$) have large variance.
-
-Consequence: the clip band $[1-\epsilon, 1+\epsilon]$ is effectively inactive for most positive-advantage samples (since $\rho_t < 1-\epsilon$ often), allowing unconstrained large updates on high-reward samples. This drives **reward hacking**: proxy reward improves but true image quality degrades.
+GRPO-Guard is a **modifier** applied to the training objective of any coupled GRPO method (FlowGRPO, DanceGRPO, MixGRPO). It changes nothing about how images are sampled; it only changes how the importance ratio is computed and weighted inside the loss. The core issue it addresses is that PPO's clip mechanism — designed around the assumption $\mathbb{E}[\rho_t] \approx 1$ — breaks down in flow-matching GRPO, causing reward hacking. This file builds on the GRPO objective from [flow_grpo.md](flow_grpo.md).
 
 ---
 
-## Diagnosing the failure
+## Problem 1 — The importance ratio is systematically left-shifted; PPO clipping does not engage
 
-For a Gaussian policy $\pi_\theta(x_{t-\Delta t} \mid x_t) = \mathcal{N}(\mu_\theta, \sigma_t^2\Delta t I)$, the log-ratio is:
+**Issue**: In flow-matching GRPO, empirical measurement shows that the mean of $\rho_t^{(i)}$ is **systematically below 1** across all timesteps. PPO clipping is designed to catch ratios outside $[1-\epsilon, 1+\epsilon]$, assuming the ratio is centred near 1. When the mean is left-shifted (e.g., mean $\approx 0.7$), most positive-advantage samples already satisfy $\rho_t^{(i)} < 1-\epsilon$, so the clip is never activated — the update is unconstrained. This allows the policy to take unbounded steps on high-reward samples, driving **reward hacking**: proxy reward keeps climbing but image quality degrades.
 
-$$\log \rho_t^{(i)} = \frac{\Vert x_{t-\Delta t}^{(i)} - \mu_{\theta_\text{old}}\Vert^2 - \Vert x_{t-\Delta t}^{(i)} - \mu_\theta\Vert^2}{2\sigma_t^2\Delta t} = \frac{(\mu_\theta - \mu_{\theta_\text{old}}) \cdot \Delta\mu_t}{{\sigma_t^2\Delta t}}$$
+**Why it happens**: For a Gaussian policy at step $t$, the log importance ratio is:
 
-where $\Delta\mu_t = \mu_\theta - \mu_{\theta_\text{old}}$. The magnitude depends on $\sigma_t$ — steps with small $\sigma_t$ (late denoising) produce large log-ratios, while steps with large $\sigma_t$ (early denoising) produce small ones. This imbalance is the root cause.
+$$\log \rho_t^{(i)} = \frac{(\mu_\theta - \mu_{\theta_\text{old}}) \cdot (x_{t-\Delta t}^{(i)} - \mu_{\theta_\text{old}})}{\sigma_t^2\Delta t}$$
 
----
+When $\theta$ has been updated in a direction that increases reward, $\mu_\theta$ moves away from $\mu_{\theta_\text{old}}$, and the numerator tends to be negative for randomly-drawn $x_{t-\Delta t}^{(i)}$ (the sample is "left behind" the shifting mean). This structurally left-shifts $\rho_t$.
 
-## Key contribution 1 — RatioNorm (per-timestep standardisation)
+**Idea — RatioNorm**: Standardise the log importance ratio within the group at each timestep, removing the systematic bias and scale. Define the normalised log ratio:
 
-Replace the raw log importance ratio with a **standardised** version that has zero mean and unit standard deviation at each timestep $t$:
+$$\log \hat\rho_t^{(i)} = \frac{\log \rho_t^{(i)} - \mathbb{E}_i[\log \rho_t^{(i)}]}{\mathrm{std}_i(\log \rho_t^{(i)}) + \delta}$$
 
-$$\log \hat\rho_t^{(i)} = \frac{\log \rho_t^{(i)} - \mathbb{E}_i[\log \rho_t^{(i)}]}{\text{std}_i(\log \rho_t^{(i)}) + \delta} + 0$$
+Using the Gaussian structure of the flow policy, this simplifies to a form involving only the dot product of the mean shift with the noise sample:
 
-Equivalently, in the paper's formulation using the Gaussian structure:
+$$\log \hat\rho_t^{(i)} = -\Delta\mu_t \cdot \epsilon_t^{(i)}$$
 
-$$\log \hat\rho_t = \sigma_t\sqrt{\Delta t}\left(\log \rho_t + \frac{\Vert\Delta\mu_t\Vert^2}{2\sigma_t^2\Delta t}\right) = -\Delta\mu_t \cdot \epsilon_t$$
+where $\epsilon_t^{(i)}$ is the noise injected at step $t$ for sample $i$.
 
-where $\epsilon_t$ is the noise used at that step. This form removes the timestep-dependent scale factor $1/(\sigma_t^2\Delta t)$ and replaces it with a unit-scale projection onto the noise direction.
-
-After RatioNorm: $\mathbb{E}[\log \hat\rho_t] \approx 0$ and $\text{std}(\log \hat\rho_t) \approx 1$ for all $t$ — matching PPO's design assumption.
-
-The normalised ratio is then:
-
-$$\hat\rho_t^{(i)} = \exp(\log \hat\rho_t^{(i)})$$
+**Why this works**: After RatioNorm, $\mathbb{E}[\log\hat\rho_t] \approx 0$ and $\mathrm{std}(\log\hat\rho_t) \approx 1$ for all $t$. This matches PPO's design assumption — the clip band $[1-\epsilon, 1+\epsilon]$ now activates as intended, constraining large updates when the policy has drifted far from the old policy.
 
 ---
 
-## Key contribution 2 — Gradient reweighting
+## Problem 2 — Gradient magnitude varies ~20× across timesteps; late steps dominate
 
-Even after RatioNorm, gradient magnitudes vary across timesteps due to differences in how $\mu_\theta$ depends on $v_\theta$ at each $t$. Introduce a per-timestep reweighting factor $\delta_t$:
+**Issue**: Even after RatioNorm, the gradient magnitude contributed by each timestep is not uniform. For a Gaussian policy, the gradient of $\log\rho_t$ with respect to $\theta$ scales as $1/(\sigma_t^2\Delta t)$. Steps with small $\sigma_t$ (late denoising, low noise) produce large gradients; steps with large $\sigma_t$ (early denoising, high noise) produce small ones. The ~20× variation means late timesteps dominate training, causing the model to over-optimise the final appearance while under-optimising the coarse structure.
 
-$$\delta_t = \begin{cases} 1/\Delta t & \text{(Flow-GRPO)} \\ \beta_t/\Delta t & \text{(DanceGRPO, } \beta_t \text{ from DDPM schedule)} \end{cases}$$
+**Idea — Gradient reweighting**: Multiply each timestep's loss contribution by a per-timestep factor $\delta_t$ that equalises gradient magnitudes:
 
-This normalises gradient contributions so that each timestep contributes roughly equally to the parameter update, reducing the empirically observed ~20× variation to ~2.5×.
+$$\delta_t = \begin{cases} 1/\Delta t & \text{for flow matching (FlowGRPO, MixGRPO)} \\ \beta_t/\Delta t & \text{for DDPM (DanceGRPO), where } \beta_t \text{ is the noise schedule} \end{cases}$$
+
+**Why this works**: $\delta_t$ scales each step's contribution inversely proportional to its variance, restoring approximately uniform gradient magnitudes across timesteps. The paper reports reduction from ~20× variation to ~2.5× variation, which substantially stabilises training.
 
 ---
 
-## Training objective
+## Training Objective
 
 $$\boxed{
-\mathcal{L}_\text{GRPO-Guard}(\theta) = -\mathbb{E}\left[\frac{1}{N_g}\sum_{i=1}^{N_g} \frac{1}{T}\sum_{t=1}^T \delta_t \cdot \min\left(\hat\rho_t^{(i)}\hat A^{(i)},\text{clip}\left(\hat\rho_t^{(i)}, 1{-}\epsilon, 1{+}\epsilon\right)\hat A^{(i)}\right)\right]
+\mathcal{L}_\text{GRPO-Guard}(\theta) = -\mathbb{E}\!\left[\frac{1}{N_g}\sum_{i=1}^{N_g}\frac{1}{T}\sum_{t=1}^{T}\delta_t\cdot\min\!\left(\hat\rho_t^{(i)}\hat{A}^{(i)},\ \mathrm{clip}\!\left(\hat\rho_t^{(i)}, 1{-}\epsilon, 1{+}\epsilon\right)\hat{A}^{(i)}\right)\right]
 }$$
 
-Compared to plain FlowGRPO/DanceGRPO:
-- $\rho_t$ → $\hat\rho_t$ (RatioNorm applied)
-- Extra $\delta_t$ factor (gradient reweighting)
-- Everything else (advantage, clip, KL) unchanged
+Compared to plain FlowGRPO: $\rho_t \to \hat\rho_t$ (RatioNorm) and an extra $\delta_t$ factor. Sampling, advantage estimation, and KL penalty are unchanged.
 
 ---
 
-## Sampling and reward calculation
-
-Identical to whichever base method (FlowGRPO or DanceGRPO) GRPO-Guard is applied to.
-
----
-
-## Training algorithm
+## Algorithm (Objective Modifier)
 
 ```
-Replace the GRPO objective computation:
+Replace only the GRPO objective computation in FlowGRPO / DanceGRPO / MixGRPO:
 
   OLD:
-    ρ_t^(i) = π_θ(x_{t-1}^(i)|x_t^(i)) / π_{θ_old}(...)
-    loss += min(ρ_t^(i)·Â^(i), clip(ρ_t^(i),1-ε,1+ε)·Â^(i))
+    log_ρ_t^(i) = (‖x_{t-Δt}^(i) - μ_{θ_old}‖² - ‖x_{t-Δt}^(i) - μ_θ‖²) / (2σ_t²Δt)
+    ρ_t^(i)     = exp(log_ρ_t^(i))
+    loss        += min(ρ_t^(i)·Â^(i),  clip(ρ_t^(i), 1-ε, 1+ε)·Â^(i))
 
   NEW (GRPO-Guard):
-    log_ρ_raw = (||x_{t-1}^(i) - μ_θ_old||² - ||x_{t-1}^(i) - μ_θ||²) / (2σ_t²Δt)
-    # RatioNorm: standardise across group members at this timestep
-    log_ρ_hat = σ_t√(Δt) · (log_ρ_raw + ||Δμ_t||² / (2σ_t²Δt))
-              = -Δμ_t · ε_t                          ← unit-scale
-    ρ_hat = exp(log_ρ_hat)
-    # Gradient reweighting
-    δ_t = 1/Δt    (or β_t/Δt for DDPM)
-    loss += δ_t · min(ρ_hat·Â^(i), clip(ρ_hat,1-ε,1+ε)·Â^(i))
+    log_ρ_raw = (‖x_{t-Δt}^(i) - μ_{θ_old}‖² - ‖x_{t-Δt}^(i) - μ_θ‖²) / (2σ_t²Δt)
 
-All other parts of the training loop unchanged.
+    # RatioNorm: project onto noise direction → unit scale, zero mean
+    Δμ_t      = μ_θ(x_t^(i), t, c) - μ_{θ_old}(x_t^(i), t, c)
+    log_ρ_hat = -Δμ_t · ε_t^(i)                           ← ε_t^(i) is stored SDE noise
+    ρ_hat     = exp(log_ρ_hat)
+
+    # Gradient reweighting
+    δ_t       = 1/Δt        (flow)   or   β_t/Δt  (DDPM)
+    loss      += δ_t · min(ρ_hat·Â^(i),  clip(ρ_hat, 1-ε, 1+ε)·Â^(i))
+
+All sampling steps and advantage computation unchanged.
 ```
 
 ---
 
-## Effect
+## Effect on Training Stability
 
-| Metric | FlowGRPO (no Guard) | GRPO-Guard |
+| Metric | FlowGRPO baseline | With GRPO-Guard |
 |---|---|---|
-| Ratio mean | $< 1$ (left-shifted) | $\approx 1$ |
-| Ratio variance across timesteps | ~20× variation | ~2.5× variation |
-| Reward hacking | Occurs after prolonged training | Mitigated |
-| Proxy reward | Eventually diverges (reward hacking) | Stable improvement |
+| Mean of $\rho_t$ | $<1$ (left-shifted) | $\approx 1$ (centred) |
+| Variance spread across timesteps | $\sim 20\times$ | $\sim 2.5\times$ |
+| PPO clip activation | Rarely | As designed |
+| Reward hacking onset | Early (reward climbs, quality drops) | Substantially delayed |
 
 ---
 
 ## Compatibility
 
-GRPO-Guard is a **modifier** — it can be applied to any coupled GRPO method:
+GRPO-Guard is a pure objective modifier — it is composable with all coupled methods:
 - FlowGRPO + Guard ✓
 - DanceGRPO + Guard ✓
-- MixGRPO + Guard ✓ (apply within window only)
-- CPS + Guard ✓ (use CPS for sampling, Guard for objective)
+- MixGRPO + Guard ✓ (apply RatioNorm and $\delta_t$ to window steps only)
+- CPS + Guard ✓ (CPS handles sampling quality; Guard handles objective stability)
+- UniGRPO adopts RatioNorm from this work ✓
 
 ---
 
 ## Limitations
 
-- RatioNorm slightly approximates the exact normalisation (uses per-group statistics, not population).
-- Gradient reweighting $\delta_t$ is a fixed schedule, not adaptive.
-- Does not address the SDE noise artifact problem (→ CPS) or computational expense (→ MixGRPO).
+- RatioNorm uses per-group statistics (group size $N_g$) rather than population statistics — the normalisation is an approximation that degrades for small groups ($N_g < 4$).
+- Gradient reweighting $\delta_t$ is a fixed schedule, not adaptive to the current model's gradient landscape.
+- Does not address SDE noise artifacts (→ [CPS](cps.md)) or computational cost (→ [MixGRPO](mix_grpo.md)).

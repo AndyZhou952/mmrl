@@ -1,7 +1,9 @@
 # Multi-Modal Reinforcement Learning (MMRL)
 
-A learning repository tracing the development of reinforcement learning algorithms for
+A survey repository tracing the development of reinforcement learning algorithms for
 multi-modal generative models — primarily text-to-image and text-to-video diffusion/flow models.
+
+**Assumed background**: readers are expected to know (1) multimodal model architecture and training basics, (2) diffusion/flow matching training (DDPM, DDIM, rectified flow), and (3) RL fundamentals including PPO and GRPO as applied in LLMs. The papers covered here address how these RL ideas are extended to continuous generative models — a non-trivial gap that each paper solves differently.
 
 ---
 
@@ -10,24 +12,27 @@ multi-modal generative models — primarily text-to-image and text-to-video diff
 ```
 mmrl/
 ├── README.md                     ← you are here
+├── INTEGRATION_GUIDE.md          ← how to add new algorithms (format rules, notation, checklist)
 ├── models.md                     ← industry models using multimodal RL (2025–2026)
 └── papers/
     ├── INDEX.md                  ← master table: all papers, dates, arXiv links, citation map
-    ├── foundations/              ← 2023 precursors (before the coupled/decoupled split)
-    │   ├── ddpo.md               ← DDPO (May 2023) — first diffusion MDP; root of coupled line
-    │   └── diffusion_dpo.md      ← Diffusion-DPO (Nov 2023) — root of decoupled/DPO line
+    ├── READING_GUIDE.md          ← how one approach leads to the next; recommended paths
+    ├── advances.md               ← 20+ additional papers from late 2025–2026
     ├── coupled/                  ← SDE-coupled: training tied to stochastic sampling dynamics
-    │   ├── flow_grpo.md          ← Flow-GRPO + Fast variant (May 2025, NeurIPS 2025)
-    │   ├── dance_grpo.md         ← DanceGRPO (May 2025)
+    │   ├── flow_grpo.md          ← FlowGRPO (May 2025, NeurIPS 2025) — pioneering GRPO for flow matching
+    │   ├── dance_grpo.md         ← DanceGRPO (May 2025) — concurrent; unified image+video
     │   ├── mix_grpo.md           ← MixGRPO + Flash variant (Jul 2025)
     │   ├── cps.md                ← CPS — noise-artifact fix for coupled methods (Sep 2025)
-    │   └── grpo_guard.md         ← GRPO-Guard — anti-reward-hacking for coupled (Oct 2025)
+    │   ├── grpo_guard.md         ← GRPO-Guard — anti-reward-hacking for coupled (Oct 2025)
+    │   └── uni_grpo.md           ← UniGRPO — reasoning-driven generation (Mar 2026)
     └── decoupled/                ← Solver-agnostic: training independent of sampling dynamics
         ├── srpo.md               ← SRPO (Sep 2025) — noise-prior recovery + semantic relative reward
         ├── diffusion_nft.md      ← DiffusionNFT — forward-process RL (Sep 2025)
         ├── awm.md                ← AWM — advantage-weighted matching loss (Sep 2025)
         └── dgpo.md               ← DGPO — group preference, ODE-compatible (Oct 2025)
 ```
+
+Historical precursors (no dedicated files): **DDPO** (ICLR 2024, [2305.13301](https://arxiv.org/abs/2305.13301)) — first diffusion MDP, root of the coupled line; **Diffusion-DPO** (CVPR 2024, [2311.12908](https://arxiv.org/abs/2311.12908)) — offline DPO via diffusion ELBO, root of the decoupled line.
 
 ---
 
@@ -45,7 +50,7 @@ Training timesteps are **coupled with the SDE-based sampling dynamics**. Computi
 | Importance ratio $\rho = \pi_\theta / \pi_{\theta_\text{old}}$ needed at each step | Sensitive to ratio imbalance across timesteps |
 | Full reverse-process rollout required | Memory-intensive for long trajectories |
 
-Methods: **DDPO, FlowGRPO, DanceGRPO, MixGRPO** (and fixes: CPS, GRPO-Guard)
+Methods: **FlowGRPO, DanceGRPO, MixGRPO** (and fixes: CPS, GRPO-Guard)
 
 ### Decoupled paradigm
 
@@ -72,13 +77,12 @@ Methods: **Diffusion-DPO, DGPO, DiffusionNFT, AWM**
 | **Advantage-weighted matching loss** | AWM |
 | **Contrastive forward-process** | DiffusionNFT |
 | **Direct reward + semantic relative reward** | SRPO |
-| **Foundation MDP formulation** | DDPO |
 
 ### By efficiency problem solved
 
 | Problem | Solutions |
 |---|---|
-| Diffusion has no discrete action space → PG undefined | DDPO (MDP framing), FlowGRPO (ODE→SDE), DanceGRPO |
+| Flow matching ODE has no density → GRPO undefined | FlowGRPO (ODE→SDE conversion) |
 | All $T$ SDE steps need gradients → slow | FlowGRPO-Fast, MixGRPO, MixGRPO-Flash |
 | SDE noise artifacts hurt reward learning | CPS |
 | Ratio imbalance → reward hacking | GRPO-Guard |
@@ -92,12 +96,12 @@ Methods: **Diffusion-DPO, DGPO, DiffusionNFT, AWM**
 ## Development Timeline
 
 ```
-2023-05  DDPO           — first diffusion MDP; policy gradient over denoising chain
-2023-11  Diffusion-DPO  — offline DPO via diffusion ELBO (root of decoupled line)
+2023-05  DDPO           — first diffusion MDP; policy gradient over denoising chain  [ICLR 2024, precursor]
+2023-11  Diffusion-DPO  — offline DPO via diffusion ELBO  [CVPR 2024, precursor]
 
-         ─── ~18-month gap: LLM GRPO (DeepSeek-R1) proves out ───
+         ─── DeepSeek releases GRPO (January 2025) ───
 
-2025-05  FlowGRPO       — GRPO for flow matching; ODE→SDE; +Fast variant  [NeurIPS 2025]
+2025-05  FlowGRPO       — first to apply GRPO to flow matching; ODE→SDE; +Fast variant  [NeurIPS 2025]
 2025-05  DanceGRPO      — concurrent; unified image+video, 4 backbones
 2025-07  MixGRPO        — sliding-window ODE/SDE; +Flash (−71% time)
 2025-09  CPS            — DDIM-inspired sampler; eliminates SDE noise artifacts  [coupled fix]
@@ -106,7 +110,10 @@ Methods: **Diffusion-DPO, DGPO, DiffusionNFT, AWM**
 2025-09  AWM            — replaces DDPO log-prob with pretraining matching loss; 24× faster
 2025-10  DGPO           — group preference via ELBO; ODE-compatible; ~20× faster
 2025-10  GRPO-Guard     — ratio normalisation + gradient reweighting  [coupled fix]
+2026-03  UniGRPO        — unified policy optimisation for reasoning-driven visual generation
 ```
+
+See `papers/advances.md` for 20+ additional algorithm papers from late 2025–2026 (BranchGRPO, TreeGRPO, DenseGRPO, DiverseGRPO, DRIFT, TDM-R1, and more).
 
 See `papers/INDEX.md` for the full citation graph.
 
@@ -114,10 +121,9 @@ See `papers/INDEX.md` for the full citation graph.
 
 ## Recommended Reading Order
 
-1. `papers/foundations/ddpo.md` — the MDP framing all coupled methods rely on
-2. `papers/foundations/diffusion_dpo.md` — the offline baseline for the decoupled line
-3. `papers/coupled/flow_grpo.md` — the pivot point to GRPO-based coupled methods
-4. `papers/coupled/dance_grpo.md` — concurrent, broader scope
-5. Then choose your path:
-   - **Coupled improvements**: MixGRPO → CPS → GRPO-Guard
-   - **Decoupled methods**: AWM → DiffusionNFT → DGPO
+See **[`papers/READING_GUIDE.md`](papers/READING_GUIDE.md)** for the full narrative with explanations of how each paper leads to the next.
+
+Quick paths:
+- **Core chain** (how FlowGRPO is iteratively improved): `flow_grpo → mix_grpo → grpo_guard → cps`
+- **Decoupled branch** (alternatives that drop the SDE requirement): `flow_grpo → awm → dgpo → srpo`
+- **Concurrent breadth**: `dance_grpo` alongside either path above
