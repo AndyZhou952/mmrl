@@ -38,9 +38,9 @@ DiffusionNFT takes the most radical departure from the coupled paradigm: instead
 
 Rather than explicitly sampling from a reward-weighted distribution, DiffusionNFT defines two **implicit velocity fields** as perturbations around the old policy $v_{\theta_\text{old}}$:
 
-$$v_\theta^{+}(x_t, t, c) = (1-\beta)v_{\theta_\text{old}}(x_t, t, c) + \beta\,v_\theta(x_t, t, c) \quad \text{(positive: aligned with current update)}$$
+$$v_\theta^{+}(x_t, t, c) = (1-\beta)v_{\theta_\text{old}}(x_t, t, c) + \betav_\theta(x_t, t, c) \quad \text{(positive: aligned with current update)}$$
 
-$$v_\theta^{-}(x_t, t, c) = (1+\beta)v_{\theta_\text{old}}(x_t, t, c) - \beta\,v_\theta(x_t, t, c) \quad \text{(negative: opposite direction)}$$
+$$v_\theta^{-}(x_t, t, c) = (1+\beta)v_{\theta_\text{old}}(x_t, t, c) - \betav_\theta(x_t, t, c) \quad \text{(negative: opposite direction)}$$
 
 These are proxies for:
 - $\pi^{+}(x_0|c) \propto r \cdot \pi_{\theta_\text{old}}(x_0|c)$ — a policy biased toward high-reward images
@@ -54,12 +54,12 @@ The coupling parameter $\beta$ controls how far the implicit policies deviate fr
 
 For each generated image $x_0^{(i)}$ with reward $r^{(i)} \in [0,1]$, construct a forward-noised version:
 
-$$x_t^{(i)} = (1-t)x_0^{(i)} + t\,\epsilon^{(i)}, \quad \epsilon^{(i)} \sim \mathcal{N}(0,I), \quad u_t^{(i)} = x_0^{(i)} - \epsilon^{(i)}$$
+$$x_t^{(i)} = (1-t)x_0^{(i)} + t\epsilon^{(i)}, \quad \epsilon^{(i)} \sim \mathcal{N}(0,I), \quad u_t^{(i)} = x_0^{(i)} - \epsilon^{(i)}$$
 
 The **contrastive flow matching loss** combines positive and negative matching weighted by the reward:
 
 $$\boxed{
-\mathcal{L}_\text{NFT}(\theta) = \mathbb{E}_{t,\epsilon}\!\left[\frac{1}{N}\sum_{i=1}^{N}\left(r^{(i)}\left\|v_\theta^{+}(x_t^{(i)},t,c) - u_t^{(i)}\right\|^2 + (1{-}r^{(i)})\left\|v_\theta^{-}(x_t^{(i)},t,c) - u_t^{(i)}\right\|^2\right)\right]
+\mathcal{L}_\text{NFT}(\theta) = \mathbb{E}_{t,\epsilon}\left[\frac{1}{N}\sum_{i=1}^{N}\left(r^{(i)}\left\Vert{}v_\theta^{+}(x_t^{(i)},t,c) - u_t^{(i)}\right\Vert^2 + (1{-}r^{(i)})\left\Vert{}v_\theta^{-}(x_t^{(i)},t,c) - u_t^{(i)}\right\Vert^2\right)\right]
 }$$
 
 Substituting the implicit policy definitions and minimising over $v_\theta$:
@@ -74,7 +74,7 @@ Substituting the implicit policy definitions and minimising over $v_\theta$:
 
 Since $v_{\theta_\text{old}}$ appears inside the loss, it must track $v_\theta$ to keep the implicit policies meaningful. A scheduled EMA update:
 
-$$\theta_\text{old} \leftarrow \eta_i\,\theta_\text{old} + (1-\eta_i)\,\theta$$
+$$\theta_\text{old} \leftarrow \eta_i\theta_\text{old} + (1-\eta_i)\theta$$
 
 with $\eta_i \to 1$ as training progresses (warm-up toward near-identity). This prevents $v_\theta^{\pm}$ from becoming arbitrary functions far from the current model.
 

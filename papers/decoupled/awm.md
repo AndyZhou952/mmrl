@@ -24,17 +24,17 @@ AWM addresses a conceptual gap that prior work overlooked: the pretraining objec
 
 **Issue**: DDPO's policy gradient update at timestep $t$ is proportional to the reward times the gradient of $\log \pi_\theta(x_{t-1} | x_t, c)$. For a Gaussian policy, this is equivalent to:
 
-$$\nabla_\theta \mathcal{L}_\text{DDPO} \propto r \cdot \nabla_\theta \left\|v_\theta(x_t, t, c) - \underbrace{(x_{t-1} - \epsilon)}_{\text{noisy target}}\right\|^2$$
+$$\nabla_\theta \mathcal{L}_\text{DDPO} \propto r \cdot \nabla_\theta \left\Vert{}v_\theta(x_t, t, c) - \underbrace{(x_{t-1} - \epsilon)}_{\text{noisy target}}\right\Vert^2$$
 
 The target $(x_{t-1} - \epsilon)$ is a *stochastic* sample from the policy at step $t-1$. Compare this to the pretraining flow matching loss, which uses the **clean** velocity target:
 
-$$\mathcal{L}_\text{FM}(\theta) = \mathbb{E}_{t,\epsilon,x_0}\!\left[\left\|v_\theta(x_t, t, c) - \underbrace{(x_0 - \epsilon)}_{u_t,\ \text{clean}}\right\|^2\right]$$
+$$\mathcal{L}_\text{FM}(\theta) = \mathbb{E}_{t,\epsilon,x_0}\left[\left\Vert{}v_\theta(x_t, t, c) - \underbrace{(x_0 - \epsilon)}_{u_t,\ \text{clean}}\right\Vert^2\right]$$
 
-The difference is $(x_{t-1} - x_0)$, the noise residual at step $t-1$. This residual has variance $\propto (1-t)^2\|v_\theta - u_t\|^2$, which is non-zero whenever the model prediction deviates from the data manifold. This **inflates gradients** and causes training instability.
+The difference is $(x_{t-1} - x_0)$, the noise residual at step $t-1$. This residual has variance $\propto (1-t)^2\Vert{}v_\theta - u_t\Vert^2$, which is non-zero whenever the model prediction deviates from the data manifold. This **inflates gradients** and causes training instability.
 
 **Idea**: Replace the noisy DDPO target with the clean velocity target $u_t = x_0 - \epsilon$, and weight the loss by the group-relative advantage:
 
-$$\mathcal{L}_\text{AWM}(\theta) = \mathbb{E}_{t,\epsilon}\!\left[\frac{1}{N}\sum_{i=1}^{N} w(t)\,\hat{A}^{(i)}\left\|v_\theta(x_t^{(i)}, t, c) - u_t^{(i)}\right\|^2\right]$$
+$$\mathcal{L}_\text{AWM}(\theta) = \mathbb{E}_{t,\epsilon}\left[\frac{1}{N}\sum_{i=1}^{N} w(t)\hat{A}^{(i)}\left\Vert{}v_\theta(x_t^{(i)}, t, c) - u_t^{(i)}\right\Vert^2\right]$$
 
 **Why this works**: The clean target eliminates the noise residual variance completely. The advantage weighting provides the RL signal: positive-advantage samples push $v_\theta$ toward the target (reinforcing the behaviour), while negative-advantage samples push $v_\theta$ away from the target (suppressing the behaviour). Crucially, this is the **exact same loss** as flow matching pretraining — but with advantage weighting added. No architectural changes, no SDE, no importance ratio.
 
@@ -47,7 +47,7 @@ AWM establishes a precise analogy between language model alignment and diffusion
 | Domain | Pretraining loss | RL-aligned loss |
 |---|---|---|
 | LLMs | $\mathcal{L}_\text{SFT} = -\mathbb{E}[\log\pi(y|x)]$ | $\mathcal{L}_\text{PPO} = -\mathbb{E}[\hat{A}\cdot\log\pi(y|x)]$ |
-| Diffusion | $\mathcal{L}_\text{FM} = \mathbb{E}[\|v_\theta - u_t\|^2]$ | $\mathcal{L}_\text{AWM} = \mathbb{E}[\hat{A}\cdot\|v_\theta - u_t\|^2]$ |
+| Diffusion | $\mathcal{L}_\text{FM} = \mathbb{E}[\Vert{}v_\theta - u_t\Vert^2]$ | $\mathcal{L}_\text{AWM} = \mathbb{E}[\hat{A}\cdot\Vert{}v_\theta - u_t\Vert^2]$ |
 
 In both cases, the RL loss is the pretraining loss multiplied by the advantage weight. AWM is the natural flow-matching analogue of PPO's policy gradient — not a heuristic, but the unique extension that preserves the pretraining objective structure.
 
@@ -57,7 +57,7 @@ In both cases, the RL loss is the pretraining loss multiplied by the advantage w
 
 Group-relative advantage (same as GRPO; see [NOTATION.md §5](../NOTATION.md)):
 
-$$\hat{A}^{(i)} = \frac{r^{(i)} - \overline{r}}{\mathrm{std}(\{r^{(j)}\}) + \delta}, \quad r^{(i)} = r(x_0^{(i)}, c)$$
+$$\hat{A}^{(i)} = \frac{r^{(i)} - \overline{r}}{\mathrm{std}(\lbracer^{(j)}\rbrace) + \delta}, \quad r^{(i)} = r(x_0^{(i)}, c)$$
 
 **Effect of advantage sign**:
 - $\hat{A}^{(i)} > 0$: $w(t)\hat{A}^{(i)} > 0$ → loss pushes $v_\theta$ **toward** the clean target for this image → reinforces this generation.
@@ -68,7 +68,7 @@ $$\hat{A}^{(i)} = \frac{r^{(i)} - \overline{r}}{\mathrm{std}(\{r^{(j)}\}) + \del
 ## Training Objective
 
 $$\boxed{
-\mathcal{L}_\text{AWM}(\theta) = \mathbb{E}_{t,\epsilon}\!\left[\frac{1}{N}\sum_{i=1}^{N} w(t)\,\hat{A}^{(i)}\left\|v_\theta\!\left((1{-}t)x_0^{(i)} + t\epsilon^{(i)},\ t,\ c\right) - (x_0^{(i)} - \epsilon^{(i)})\right\|^2\right]
+\mathcal{L}_\text{AWM}(\theta) = \mathbb{E}_{t,\epsilon}\left[\frac{1}{N}\sum_{i=1}^{N} w(t)\hat{A}^{(i)}\left\Vert{}v_\theta\left((1{-}t)x_0^{(i)} + t\epsilon^{(i)},\ t,\ c\right) - (x_0^{(i)} - \epsilon^{(i)})\right\Vert^2\right]
 }$$
 
 where $w(t) \geq 0$ is a timestep weighting schedule (default: $w(t) = 1$, matching the pretraining schedule). No importance ratio, no SDE, no reference policy during the gradient step.

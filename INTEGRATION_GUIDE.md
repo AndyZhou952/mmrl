@@ -38,7 +38,7 @@ Every paper in the coupled or decoupled directory must be classified:
 
 **Decision rule in detail**:
 - If the paper derives an importance ratio $\rho_t = \pi_\theta / \pi_{\theta_\text{old}}$ at individual denoising steps → **Coupled**
-- If the paper uses only the terminal images $\{x_0^{(i)}\}$ and a forward-noising or ELBO-based loss → **Decoupled**
+- If the paper uses only the terminal images $\lbracex_0^{(i)}\rbrace$ and a forward-noising or ELBO-based loss → **Decoupled**
 - If the paper is a pure fix/modifier (e.g., changes the objective formula but does not change the paradigm) → same directory as the base method it modifies
 
 ### Dedicated file vs. `advances.md` entry
@@ -198,12 +198,12 @@ All mathematical content must be consistent with `NOTATION.md`. Before writing a
 | Model output | $v_\theta(x_t, t, c)$ | $\epsilon_\theta(x_t, t, c)$ |
 | Noisy state | $x_t = (1-t)x_0 + t\epsilon$ | $x_t = \sqrt{\bar\alpha_t}x_0 + \sigma_t\epsilon$ |
 | Clean image | $x_0$ | $x_0$ |
-| Clean-image estimate | $\hat{x}_0 = x_t - t\,v_\theta$ | $\hat{x}_0 = (x_t - \sigma_t\epsilon_\theta)/\sqrt{\bar\alpha_t}$ |
+| Clean-image estimate | $\hat{x}_0 = x_t - tv_\theta$ | $\hat{x}_0 = (x_t - \sigma_t\epsilon_\theta)/\sqrt{\bar\alpha_t}$ |
 | Score function | $\nabla_{x_t}\log p_t \approx (\hat{x}_0 - x_t)/t^2$ | $\nabla_{x_t}\log p_t \approx -\epsilon_\theta/\sigma_t$ |
 | Importance ratio | $\rho_t^{(i)} = \pi_\theta / \pi_{\theta_\text{old}}$ | same |
 | Group advantage | $\hat{A}^{(i)}$ (see NOTATION.md §5) | same |
-| Per-step density (flow SDE) | $\pi_\theta(x_{t-\Delta t}\|x_t, c) = \mathcal{N}(\mu_\theta, \sigma_t^2\Delta t\,I)$ | $\pi_\theta(x_{t-1}\|x_t,c) = \mathcal{N}(\mu_\theta, \tilde\beta_t I)$ |
-| KL penalty | $\beta\,D_\text{KL}(\pi_\theta \Vert \pi_\text{ref})$ | same |
+| Per-step density (flow SDE) | $\pi_\theta(x_{t-\Delta t}\Vert{}x_t, c) = \mathcal{N}(\mu_\theta, \sigma_t^2\Delta tI)$ | $\pi_\theta(x_{t-1}\Vert{}x_t,c) = \mathcal{N}(\mu_\theta, \tilde\beta_t I)$ |
+| KL penalty | $\betaD_\text{KL}(\pi_\theta \Vert \pi_\text{ref})$ | same |
 
 **Display math rules**:
 - Inline: `$...$` for single symbols and short expressions

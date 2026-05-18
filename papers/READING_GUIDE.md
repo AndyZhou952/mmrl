@@ -107,7 +107,7 @@ DanceGRPO also introduces timestep **subsampling** (random $\tau$-fraction of st
 
 **Read last in the coupled chain.** [`coupled/cps.md`](coupled/cps.md)
 
-Even with MixGRPO's efficiency and GRPO-Guard's stability, there is a quieter problem: the SDE-generated $x_0$ samples used to compute rewards are **slightly off the flow manifold**. FlowGRPO's SDE adds noise $s_t\sqrt{\Delta t}\,\epsilon_t$ on top of the Euler step, producing a total noise level at $t-\Delta t$ that exceeds $(t-\Delta t)$ — the level the rectified flow schedule specifies. Over many steps, this accumulation makes the image slightly noisier than a clean image should be. Reward models trained on clean images give unreliable scores for these off-manifold samples.
+Even with MixGRPO's efficiency and GRPO-Guard's stability, there is a quieter problem: the SDE-generated $x_0$ samples used to compute rewards are **slightly off the flow manifold**. FlowGRPO's SDE adds noise $s_t\sqrt{\Delta t}\epsilon_t$ on top of the Euler step, producing a total noise level at $t-\Delta t$ that exceeds $(t-\Delta t)$ — the level the rectified flow schedule specifies. Over many steps, this accumulation makes the image slightly noisier than a clean image should be. Reward models trained on clean images give unreliable scores for these off-manifold samples.
 
 CPS fixes this with a **coefficients-preserving step**: decompose $x_{t-\Delta t}$ into clean-image, noise-direction, and fresh-noise components, and set the coefficients so the total noise level is exactly $t-\Delta t$. This is the flow-matching analogue of stochastic DDIM.
 
@@ -161,7 +161,7 @@ AWM starts from a theoretical diagnosis: DDPO's policy gradient is mathematicall
 
 The fix is almost embarrassingly simple: use the **clean velocity target** $u_t = x_0 - \epsilon$ (the pretraining target) and weight each image's loss by its group-relative advantage $\hat{A}^{(i)}$:
 
-$$\mathcal{L}_\text{AWM} = \mathbb{E}\!\left[\hat{A}^{(i)}\,\|v_\theta(x_t^{(i)}, t, c) - u_t^{(i)}\|^2\right]$$
+$$\mathcal{L}_\text{AWM} = \mathbb{E}\left[\hat{A}^{(i)}\Vert{}v_\theta(x_t^{(i)}, t, c) - u_t^{(i)}\Vert^2\right]$$
 
 This is the LLM pretraining-to-PPO analogy made exact for diffusion: in LLMs, PPO = pretraining loss × advantage; AWM establishes the same for flow models. No SDE, no importance ratio, no reference model lookup per gradient step. Reported speedup: **24× vs. FlowGRPO** on GenEval.
 
@@ -185,7 +185,7 @@ The mechanism uses two implicit velocity fields — a "positive" version that mo
 
 DGPO extends Diffusion-DPO from binary offline preference pairs to **online group-level ranking**. It keeps the GRPO group generation (generate $N$ images per prompt, compute group advantage) but replaces the importance ratio with the diffusion ELBO:
 
-$$\log\frac{p_\theta(x_0|c)}{p_{\theta_\text{ref}}(x_0|c)} \approx \mathbb{E}_t\!\left[\|\epsilon_{\theta_\text{ref}} - \epsilon\|^2 - \|\epsilon_\theta - \epsilon\|^2\right]$$
+$$\log\frac{p_\theta(x_0|c)}{p_{\theta_\text{ref}}(x_0|c)} \approx \mathbb{E}_t\left[\Vert\epsilon_{\theta_\text{ref}} - \epsilon\Vert^2 - \Vert\epsilon_\theta - \epsilon\Vert^2\right]$$
 
 Forward-noised versions of the generated images are constructed independently (no dependence on the sampler), and the ELBO difference is computed as a group Bradley-Terry preference loss. Any ODE sampler works for generation.
 

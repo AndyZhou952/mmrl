@@ -28,11 +28,11 @@ SRPO introduces two independent innovations that can be used separately or toget
 
 **Idea — Direct-Align**: Exploit the known noise prior. In flow matching, the forward process places $x_t$ on a linear path between the image $x_0$ and a fixed noise sample $\epsilon_\text{gt}$:
 
-$$x_t = (1-t)x_0 + t\,\epsilon_\text{gt}$$
+$$x_t = (1-t)x_0 + t\epsilon_\text{gt}$$
 
 If $\epsilon_\text{gt}$ is known (fixed at the start of training for each image), the clean image can be recovered **in one step**:
 
-$$\hat{x}_0 = \frac{x_t - t\,\epsilon_\text{gt}}{1-t}$$
+$$\hat{x}_0 = \frac{x_t - t\epsilon_\text{gt}}{1-t}$$
 
 This uses the same Tweedie formula as [NOTATION.md §3](../NOTATION.md), but substitutes the **known** $\epsilon_\text{gt}$ instead of the network's prediction — making recovery exact and bypassing multi-step denoising entirely.
 
@@ -41,14 +41,14 @@ This uses the same Tweedie formula as [NOTATION.md §3](../NOTATION.md), but sub
 ### Training procedure (Direct-Align)
 
 1. Fix a noise prior $\epsilon_\text{gt} \sim \mathcal{N}(0,I)$ per image at the start of training (held constant).
-2. At each step: sample $t \sim \mathrm{Uniform}[0,1]$; construct $x_t = (1-t)x_0 + t\,\epsilon_\text{gt}$.
+2. At each step: sample $t \sim \mathrm{Uniform}[0,1]$; construct $x_t = (1-t)x_0 + t\epsilon_\text{gt}$.
 3. One network forward pass: compute $v_\theta(x_t, t, c)$.
-4. Closed-form recovery: $\hat{x}_0 = (x_t - t\,\epsilon_\text{gt}) / (1-t)$.
+4. Closed-form recovery: $\hat{x}_0 = (x_t - t\epsilon_\text{gt}) / (1-t)$.
 5. Score: $r(\hat{x}_0, c)$; backpropagate through steps 4→3→$\theta$.
 
 Multiple timesteps are combined with a discounting factor that down-weights the very high-noise end:
 
-$$\mathcal{L}_\text{DA}(\theta) = -\mathbb{E}_t\!\left[\gamma^{T-t}\,r\!\left(\hat{x}_0(x_t, \epsilon_\text{gt}), c\right)\right]$$
+$$\mathcal{L}_\text{DA}(\theta) = -\mathbb{E}_t\left[\gamma^{T-t}r\left(\hat{x}_0(x_t, \epsilon_\text{gt}), c\right)\right]$$
 
 ### Inversion regularisation
 
@@ -82,7 +82,7 @@ where:
 
 ## Combined Training Objective
 
-$$\boxed{\mathcal{L}_\text{SRPO}(\theta) = -\mathbb{E}_{c,t,\epsilon_\text{gt}}\!\left[\gamma^{T-t}\,r_\text{SRP}\!\left(\hat{x}_0(x_t, \epsilon_\text{gt}), c\right)\right] + \lambda\,\mathcal{L}_\text{inv}(\theta)}$$
+$$\boxed{\mathcal{L}_\text{SRPO}(\theta) = -\mathbb{E}_{c,t,\epsilon_\text{gt}}\left[\gamma^{T-t}r_\text{SRP}\left(\hat{x}_0(x_t, \epsilon_\text{gt}), c\right)\right] + \lambda\mathcal{L}_\text{inv}(\theta)}$$
 
 No KL divergence. No frozen reference model. No SDE sampler required.
 

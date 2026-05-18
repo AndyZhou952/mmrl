@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Lint LaTeX math in Markdown files for GitHub rendering compatibility.
+Lint (and optionally fix) LaTeX math in Markdown files for GitHub rendering.
 
 ROOT CAUSE
 ----------
@@ -41,7 +41,8 @@ processing AND structural Markdown rules to math blocks before KaTeX renders:
 
 FIXES
 -----
-  \\|              → \\Vert (or \\lVert / \\rVert for explicit left/right)
+  \\|              → \\Vert{} (the {} prevents KaTeX from absorbing the next
+                    letter into the command name, e.g. \\Vertx → undefined)
   \\{  \\}         → \\lbrace  \\rbrace  (also fixes \\left\\{/\\right\\})
   \\,  \\;  \\:    → remove entirely
   \\!              → remove entirely
@@ -52,8 +53,10 @@ FIXES
 
 USAGE
 -----
-  python lint_math.py [file1.md file2.md ...]   # check specific files
-  python lint_math.py                            # check all *.md in tree
+  python lint_math.py [--fix] [file1.md file2.md ...]
+
+  --fix   Apply all fixes in-place before reporting remaining issues.
+          Without --fix the script is read-only.
 
 Exit code: 0 if no errors, 1 if any ERROR-level issues found.
 """
@@ -82,7 +85,14 @@ CHECKS = [
         r'\\\|',
         'ERROR',
         r'\\| stripped to bare | → triggers pipe-table parser, breaks math block. '
-        r'Use \\Vert (or \\lVert / \\rVert).',
+        r'Use \\Vert{} (or \\lVert / \\rVert).',
+    ),
+    (
+        r'\\Vert[a-zA-Z]',
+        'ERROR',
+        r'\\Vert immediately followed by a letter: KaTeX parses \\Vertx as the '
+        r'undefined command \\Vertx (TeX absorbs all following letters into the '
+        r'command name). Use \\Vert{} to terminate the command before the variable.',
     ),
     (
         r'\^[\*\+](?![{a-zA-Z0-9])',
@@ -194,6 +204,66 @@ def structural_issues(filepath: str, text: str) -> list:
 
 
 # ---------------------------------------------------------------------------
+# Auto-fix logic
+# ---------------------------------------------------------------------------
+
+def _fix_math_span(math: str) -> str:
+    """Apply all safe substitutions within a single math span."""
+    # \| → \Vert{} — the {} prevents KaTeX from absorbing the next letter
+    # into the command name (e.g. \Vertx would be the undefined command \Vertx)
+    math = math.replace(r'\|', r'\Vert{}')
+    # Repair \Vert<letter> left by a prior incomplete fix
+    math = re.sub(r'\\Vert(?=[a-zA-Z])', r'\\Vert{}', math)
+    # Remove spacing/kerning commands that CommonMark strips to punctuation
+    math = math.replace(r'\,', '')
+    math = math.replace(r'\;', '')
+    math = math.replace(r'\:', '')
+    math = math.replace(r'\!', '')
+    # Curly braces: CommonMark strips \{ and \} to bare { }
+    math = math.replace(r'\{', r'\lbrace')
+    math = math.replace(r'\}', r'\rbrace')
+    # Unbraced superscripts: ^* ^+ are CommonMark emphasis triggers
+    math = re.sub(r'\^\*(?![{a-zA-Z0-9])', r'^{\\ast}', math)
+    math = re.sub(r'\^\+(?![{a-zA-Z0-9])', r'^{+}', math)
+    return math
+
+
+def fix_file(filepath: str) -> bool:
+    """Apply all fixes to math spans in a file. Returns True if modified."""
+    text = Path(filepath).read_text(encoding='utf-8')
+    original = text
+
+    result = []
+    pos = 0
+
+    pattern = re.compile(
+        r'(\$\$.*?\$\$)'                          # block math
+        r'|'
+        r'((?<!\$)\$[^$\n]{1,200}?\$(?!\$))',     # inline math
+        re.DOTALL,
+    )
+
+    for m in pattern.finditer(text):
+        result.append(text[pos:m.start()])
+        pos = m.end()
+
+        if m.group(1):
+            inner = m.group(1)[2:-2]
+            result.append('$$' + _fix_math_span(inner) + '$$')
+        else:
+            inner = m.group(2)[1:-1]
+            result.append('$' + _fix_math_span(inner) + '$')
+
+    result.append(text[pos:])
+    new_text = ''.join(result)
+
+    if new_text != original:
+        Path(filepath).write_text(new_text, encoding='utf-8')
+        return True
+    return False
+
+
+# ---------------------------------------------------------------------------
 # Main lint logic
 # ---------------------------------------------------------------------------
 
@@ -216,10 +286,21 @@ def lint_file(filepath: str) -> list[Issue]:
 
 
 def main() -> int:
-    paths = sys.argv[1:] if len(sys.argv) > 1 else []
+    args = sys.argv[1:]
+    do_fix = '--fix' in args
+    paths = [a for a in args if a != '--fix']
+
     if not paths:
         paths = [str(p) for p in Path('.').rglob('*.md')
                  if '.git' not in p.parts]
+
+    if do_fix:
+        for path in paths:
+            try:
+                if fix_file(path):
+                    print(f'Fixed: {path}')
+            except Exception as exc:
+                print(f'ERROR fixing {path}: {exc}', file=sys.stderr)
 
     all_issues: list[Issue] = []
     for path in paths:

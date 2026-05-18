@@ -1,6 +1,6 @@
 # UniGRPO — Unified Policy Optimization for Reasoning-Driven Visual Generation
 
-> Notation: follows [NOTATION.md](../NOTATION.md). Text policy: $\pi_\theta^\text{txt}$ over token sequence $y$. Image policy: $\pi_\theta^\text{img}$ over SDE window steps. RatioNorm adapted from [GRPO-Guard](grpo_guard.md). Group size $G$; SDE window $T_\text{SDE} \subset \{t_1,\ldots,t_T\}$.
+> Notation: follows [NOTATION.md](../NOTATION.md). Text policy: $\pi_\theta^\text{txt}$ over token sequence $y$. Image policy: $\pi_\theta^\text{img}$ over SDE window steps. RatioNorm adapted from [GRPO-Guard](grpo_guard.md). Group size $G$; SDE window $T_\text{SDE} \subset \lbracet_1,\ldots,t_T\rbrace$.
 
 | Field | Value |
 |---|---|
@@ -26,7 +26,7 @@ UniGRPO targets **unified multimodal models** — transformers that generate bot
 
 **Idea**: Cast text generation and image generation as a **single unified MDP** with a shared terminal reward $R^{(i)} = R(x_0^{(i)}, y^{(i)}, c)$ evaluated on the complete (text, image) output. The group-relative advantage is computed jointly:
 
-$$\hat{A}^{(i)} = \frac{R^{(i)} - \overline{R}}{\mathrm{std}(\{R^{(j)}\}) + \delta}$$
+$$\hat{A}^{(i)} = \frac{R^{(i)} - \overline{R}}{\mathrm{std}(\lbraceR^{(j)}\rbrace) + \delta}$$
 
 This advantage flows into both the text gradient (via token-level importance ratios) and the image gradient (via SDE-step importance ratios).
 
@@ -38,13 +38,13 @@ For each prompt $c$:
 1. **Text phase**: autoregressively sample $G$ reasoning chains $y^{(i)} \sim \pi_\theta^\text{txt}(\cdot \mid c)$.
 2. **Image phase** (conditioned on $y^{(i)}$): run ODE outside $T_\text{SDE}$, SDE inside $T_\text{SDE}$:
 
-$$\pi_\theta^\text{img}(x_{t_k-\Delta t} \mid x_{t_k}, c, y^{(i)}) = \mathcal{N}\!\left(x_{t_k-\Delta t};\ \mu_\theta(x_{t_k},t_k,c,y^{(i)}),\ \sigma_{t_k}^2\Delta t\, I\right), \quad t_k \in T_\text{SDE}$$
+$$\pi_\theta^\text{img}(x_{t_k-\Delta t} \mid x_{t_k}, c, y^{(i)}) = \mathcal{N}\left(x_{t_k-\Delta t};\ \mu_\theta(x_{t_k},t_k,c,y^{(i)}),\ \sigma_{t_k}^2\Delta t I\right), \quad t_k \in T_\text{SDE}$$
 
 ---
 
 ## Problem 2 — CFG doubles compute and conflicts with importance ratio computation
 
-**Issue**: Classifier-free guidance (CFG) requires two forward passes per step — one conditioned ($c$, $y^{(i)}$) and one unconditioned ($\varnothing$) — to compute the guided velocity: $v_\text{CFG} = (1{+}w)v_\text{cond} - w\,v_\text{uncond}$. Running CFG through all $T$ steps during training doubles the per-step compute. Moreover, the importance ratio was derived for a single-pass velocity field; the CFG-modified velocity does not correspond to any proper density, breaking the ratio computation.
+**Issue**: Classifier-free guidance (CFG) requires two forward passes per step — one conditioned ($c$, $y^{(i)}$) and one unconditioned ($\varnothing$) — to compute the guided velocity: $v_\text{CFG} = (1{+}w)v_\text{cond} - wv_\text{uncond}$. Running CFG through all $T$ steps during training doubles the per-step compute. Moreover, the importance ratio was derived for a single-pass velocity field; the CFG-modified velocity does not correspond to any proper density, breaking the ratio computation.
 
 **Idea**: Apply CFG only during inference (evaluation), and use the standard single-pass (conditional-only) velocity field during training. The SDE steps are run with $v_\theta(\cdot, c, y^{(i)})$ only; guidance is omitted from the training loop.
 
@@ -62,7 +62,7 @@ $$\log \tilde{r}_{t_k}^{(i)} = -\Delta\mu_{t_k} \cdot \epsilon_{t_k}^{(i)}, \qua
 
 **Idea 2 — Velocity-space MSE regularisation**: Replace (or augment) the latent KL with an explicit penalty on the velocity field:
 
-$$\mathcal{L}_\text{MSE}(\theta) = \mathbb{E}_{t_k \in T_\text{SDE},\,i}\!\left[\left\|v_\theta(x_{t_k}^{(i)}, t_k, c, y^{(i)}) - v_{\theta_\text{ref}}(x_{t_k}^{(i)}, t_k, c, y^{(i)})\right\|^2\right]$$
+$$\mathcal{L}_\text{MSE}(\theta) = \mathbb{E}_{t_k \in T_\text{SDE},i}\left[\left\Vert{}v_\theta(x_{t_k}^{(i)}, t_k, c, y^{(i)}) - v_{\theta_\text{ref}}(x_{t_k}^{(i)}, t_k, c, y^{(i)})\right\Vert^2\right]$$
 
 **Why this works**: The velocity field $v_\theta$ is the direct output of the model; penalising its $\ell_2$ distance from the reference $v_{\theta_\text{ref}}$ directly constrains the learned dynamics, not just the latent distribution. This is analogous to weight-decay on the output, but semantically meaningful in the flow space.
 
@@ -74,17 +74,17 @@ $$\mathcal{L}_\text{MSE}(\theta) = \mathbb{E}_{t_k \in T_\text{SDE},\,i}\!\left[
 
 Standard GRPO-clip over tokens:
 
-$$J_\text{Text}(\theta) = \frac{1}{G}\sum_{i=1}^G\frac{1}{|y^{(i)}|}\sum_k \left[\min\!\left(r_{i,k}^\text{txt}\hat{A}^{(i)},\ \mathrm{clip}(r_{i,k}^\text{txt}, 1{-}\epsilon, 1{+}\epsilon)\hat{A}^{(i)}\right) - \beta_\text{txt}D_\text{KL}(\pi_\theta^\text{txt}\|\pi_\text{ref}^\text{txt})\right]$$
+$$J_\text{Text}(\theta) = \frac{1}{G}\sum_{i=1}^G\frac{1}{|y^{(i)}|}\sum_k \left[\min\left(r_{i,k}^\text{txt}\hat{A}^{(i)},\ \mathrm{clip}(r_{i,k}^\text{txt}, 1{-}\epsilon, 1{+}\epsilon)\hat{A}^{(i)}\right) - \beta_\text{txt}D_\text{KL}(\pi_\theta^\text{txt}\Vert\pi_\text{ref}^\text{txt})\right]$$
 
 where $r_{i,k}^\text{txt} = \pi_\theta^\text{txt}(y_k^{(i)} \mid \cdot) / \pi_{\theta_\text{old}}^\text{txt}(y_k^{(i)} \mid \cdot)$.
 
 ### Image component (SDE window, with RatioNorm)
 
-$$J_\text{Flow}(\theta) = \frac{1}{G}\sum_{i=1}^G\frac{1}{|T_\text{SDE}|}\sum_{t_k \in T_\text{SDE}} \!\left[\min\!\left(\tilde{r}_{t_k}^{(i)}\hat{A}^{(i)},\ \mathrm{clip}(\tilde{r}_{t_k}^{(i)}, 1{-}\epsilon, 1{+}\epsilon)\hat{A}^{(i)}\right) - \beta_\text{img}D_\text{KL}(\pi_\theta^\text{img}\|\pi_\text{ref}^\text{img})\right]$$
+$$J_\text{Flow}(\theta) = \frac{1}{G}\sum_{i=1}^G\frac{1}{|T_\text{SDE}|}\sum_{t_k \in T_\text{SDE}} \left[\min\left(\tilde{r}_{t_k}^{(i)}\hat{A}^{(i)},\ \mathrm{clip}(\tilde{r}_{t_k}^{(i)}, 1{-}\epsilon, 1{+}\epsilon)\hat{A}^{(i)}\right) - \beta_\text{img}D_\text{KL}(\pi_\theta^\text{img}\Vert\pi_\text{ref}^\text{img})\right]$$
 
 ### Combined objective
 
-$$\boxed{J_\text{UniGRPO}(\theta) = J_\text{Text}(\theta) + \lambda\, J_\text{Flow}(\theta) - \gamma\,\mathcal{L}_\text{MSE}(\theta)}$$
+$$\boxed{J_\text{UniGRPO}(\theta) = J_\text{Text}(\theta) + \lambda J_\text{Flow}(\theta) - \gamma\mathcal{L}_\text{MSE}(\theta)}$$
 
 where $\lambda = 1$ and $\gamma$ is a small penalty weight (default 0.1).
 

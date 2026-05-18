@@ -25,7 +25,7 @@ FlowGRPO and DanceGRPO established that applying GRPO to flow matching requires 
 
 **Issue**: FlowGRPO and DanceGRPO run SDE sampling for all $T$ denoising steps. Two compounding costs arise: (1) SDE steps are first-order Euler-Maruyama — they cannot use high-order ODE solvers (DPM-Solver++, Heun) that achieve the same quality with $2\text{–}3\times$ fewer steps; (2) gradient tracking through all $T$ SDE steps requires storing all $T$ intermediate activations — $O(T \cdot d)$ peak memory.
 
-**Idea**: Confine both SDE sampling and gradient tracking to a **contiguous sliding window** $\mathcal{W}(l) = \{l, l{+}1, \ldots, l{+}w{-}1\}$ of $w$ denoising steps. Outside the window, use a standard deterministic ODE with no gradient tracking. Slide the window through the trajectory over training iterations, so different segments accumulate gradient updates over time.
+**Idea**: Confine both SDE sampling and gradient tracking to a **contiguous sliding window** $\mathcal{W}(l) = \lbracel, l{+}1, \ldots, l{+}w{-}1\rbrace$ of $w$ denoising steps. Outside the window, use a standard deterministic ODE with no gradient tracking. Slide the window through the trajectory over training iterations, so different segments accumulate gradient updates over time.
 
 **Why this works**: The GRPO importance ratio $\rho_t$ is meaningful only at SDE steps (ODE steps have $\rho_t = 1$ trivially, contributing nothing to the gradient). Confining SDE to $w$ steps reduces memory to $O(w \cdot d)$, and allows the non-window steps to use fast ODE solvers — improving trajectory quality at the tail (high detail) and head (coarse structure). Sliding the window ensures the entire trajectory is eventually covered across iterations, so the full reward landscape is optimised even though only $w$ steps are updated at each iteration.
 
@@ -33,19 +33,19 @@ FlowGRPO and DanceGRPO established that applying GRPO to flow matching requires 
 
 For a trajectory with $T$ steps, window starting at position $l$:
 
-$$\underbrace{x_T \to \cdots \to x_{l+w}}_{\text{ODE, no gradient}} \;\Bigg|\; \underbrace{x_{l+w} \to \cdots \to x_l}_{\text{SDE + gradient, window } \mathcal{W}(l)} \;\Bigg|\; \underbrace{x_l \to \cdots \to x_0}_{\text{ODE, no gradient}}$$
+$$\underbrace{x_T \to \cdots \to x_{l+w}}_{\text{ODE, no gradient}} \Bigg| \underbrace{x_{l+w} \to \cdots \to x_l}_{\text{SDE + gradient, window } \mathcal{W}(l)} \Bigg| \underbrace{x_l \to \cdots \to x_0}_{\text{ODE, no gradient}}$$
 
 **Outside window** (ODE, no grad):
 
-$$x_{t-\Delta t} = x_t - v_\theta(x_t, t, c)\,\Delta t$$
+$$x_{t-\Delta t} = x_t - v_\theta(x_t, t, c)\Delta t$$
 
 **Inside window** (SDE with score correction, with grad):
 
-$$x_{t-\Delta t} = x_t - v_\theta(x_t,t,c)\,\Delta t + \frac{\sigma_t^2\Delta t}{2t^2}(\hat{x}_0 - x_t) + \sigma_t\sqrt{\Delta t}\,\epsilon_t, \quad \epsilon_t \sim \mathcal{N}(0,I)$$
+$$x_{t-\Delta t} = x_t - v_\theta(x_t,t,c)\Delta t + \frac{\sigma_t^2\Delta t}{2t^2}(\hat{x}_0 - x_t) + \sigma_t\sqrt{\Delta t}\epsilon_t, \quad \epsilon_t \sim \mathcal{N}(0,I)$$
 
 where $\hat{x}_0 = x_t - tv_\theta(x_t,t,c)$ is the Tweedie estimate. The per-step transition inside the window is Gaussian:
 
-$$\pi_\theta(x_{t-\Delta t} \mid x_t, c) = \mathcal{N}\!\left(x_{t-\Delta t};\ \mu_\theta(x_t,t,c),\ \sigma_t^2\Delta t\, I\right), \quad t \in \mathcal{W}(l)$$
+$$\pi_\theta(x_{t-\Delta t} \mid x_t, c) = \mathcal{N}\left(x_{t-\Delta t};\ \mu_\theta(x_t,t,c),\ \sigma_t^2\Delta t I\right), \quad t \in \mathcal{W}(l)$$
 
 **Window sliding** (every $\tau$ training iterations, stride $s$):
 
@@ -74,12 +74,12 @@ The paper reports **71% training time reduction** (MixGRPO-Flash vs. FlowGRPO) w
 GRPO-clip loss restricted to window steps only; ODE steps contribute nothing:
 
 $$\boxed{
-\mathcal{L}_\text{MixGRPO}(\theta) = -\mathbb{E}\!\left[\frac{1}{N_g}\sum_{i=1}^{N_g}\frac{1}{|\mathcal{W}|}\sum_{t \in \mathcal{W}(l)} \min\!\left(\rho_t^{(i)}\hat{A}^{(i)},\ \mathrm{clip}\!\left(\rho_t^{(i)}, 1{-}\epsilon, 1{+}\epsilon\right)\hat{A}^{(i)}\right)\right]
+\mathcal{L}_\text{MixGRPO}(\theta) = -\mathbb{E}\left[\frac{1}{N_g}\sum_{i=1}^{N_g}\frac{1}{|\mathcal{W}|}\sum_{t \in \mathcal{W}(l)} \min\left(\rho_t^{(i)}\hat{A}^{(i)},\ \mathrm{clip}\left(\rho_t^{(i)}, 1{-}\epsilon, 1{+}\epsilon\right)\hat{A}^{(i)}\right)\right]
 }$$
 
 Importance ratio (window steps only):
 
-$$\rho_t^{(i)} = \exp\!\left(-\frac{\|x_{t-\Delta t}^{(i)} - \mu_\theta\|^2 - \|x_{t-\Delta t}^{(i)} - \mu_{\theta_\text{old}}\|^2}{2\sigma_t^2\Delta t}\right), \quad t \in \mathcal{W}(l)$$
+$$\rho_t^{(i)} = \exp\left(-\frac{\Vert{}x_{t-\Delta t}^{(i)} - \mu_\theta\Vert^2 - \Vert{}x_{t-\Delta t}^{(i)} - \mu_{\theta_\text{old}}\Vert^2}{2\sigma_t^2\Delta t}\right), \quad t \in \mathcal{W}(l)$$
 
 ---
 

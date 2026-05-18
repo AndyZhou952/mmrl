@@ -22,7 +22,7 @@ CPS is a **drop-in fix** for FlowGRPO, DanceGRPO, and MixGRPO — it replaces on
 
 ## Problem — ODE-to-SDE conversion injects uncompensated noise, pushing samples off the flow manifold
 
-**Issue**: FlowGRPO converts the ODE to an SDE by adding independent Gaussian noise $s_t\sqrt{\Delta t}\,\epsilon_t$ at each denoising step. The rectified flow schedule specifies that $x_{t-\Delta t}$ should have noise level $t-\Delta t$ (standard deviation in the noise direction). After the SDE step, the actual noise level is:
+**Issue**: FlowGRPO converts the ODE to an SDE by adding independent Gaussian noise $s_t\sqrt{\Delta t}\epsilon_t$ at each denoising step. The rectified flow schedule specifies that $x_{t-\Delta t}$ should have noise level $t-\Delta t$ (standard deviation in the noise direction). After the SDE step, the actual noise level is:
 
 $$\sigma_\text{actual} = \sqrt{(t-\Delta t)^2 + s_t^2\Delta t} > t-\Delta t$$
 
@@ -40,7 +40,7 @@ Standard rectified flow forward process: $x_t = (1-t)x_0 + t\epsilon$. This mean
 - Clean image coefficient at time $t$: $(1-t)$
 - Noise coefficient at time $t$: $t$
 
-FlowGRPO's SDE step adds fresh noise $s_t\sqrt{\Delta t}\,\epsilon_t$ on top of the Euler step. After this, the noise-direction variance of $x_{t-\Delta t}$ becomes $(t-\Delta t)^2 + s_t^2\Delta t$ (due to independence of noise sources). The "schedule" noise level is just $(t-\Delta t)^2$. The mismatch grows with $s_t$ and $\Delta t$.
+FlowGRPO's SDE step adds fresh noise $s_t\sqrt{\Delta t}\epsilon_t$ on top of the Euler step. After this, the noise-direction variance of $x_{t-\Delta t}$ becomes $(t-\Delta t)^2 + s_t^2\Delta t$ (due to independence of noise sources). The "schedule" noise level is just $(t-\Delta t)^2$. The mismatch grows with $s_t$ and $\Delta t$.
 
 ---
 
@@ -58,7 +58,7 @@ x_{t-\Delta t}^\text{CPS} = \underbrace{(1-(t-\Delta t))}_{\text{clean coeff}}\h
 }$$
 
 where:
-- $\hat{x}_0 = x_t - t\,v_\theta(x_t,t,c)$ — Tweedie predicted clean image (same as FlowGRPO)
+- $\hat{x}_0 = x_t - tv_\theta(x_t,t,c)$ — Tweedie predicted clean image (same as FlowGRPO)
 - $\hat{x}_1 = (x_t - (1-t)\hat{x}_0)/t$ — estimated noise direction ($\approx \epsilon$ from forward process)
 - $\epsilon_t \sim \mathcal{N}(0,I)$ — fresh randomness
 - $\sigma_t \in [0, t-\Delta t]$ — stochasticity level ($\sigma_t = 0$: deterministic DDIM-style; $\sigma_t = t-\Delta t$: maximum stochasticity)
@@ -79,9 +79,9 @@ The middle term is set so that total noise variance equals $1-\bar\alpha_{t-1}$ 
 
 The CPS step is still Gaussian, so the GRPO importance ratio formula is unchanged — only $\mu_\theta$ and $\sigma^2$ differ:
 
-$$\pi_\theta^\text{CPS}(x_{t-\Delta t} \mid x_t, c) = \mathcal{N}\!\left(x_{t-\Delta t};\ (1-(t-\Delta t))\hat{x}_0 + \sqrt{(t-\Delta t)^2-\sigma_t^2}\hat{x}_1,\ \sigma_t^2 I\right)$$
+$$\pi_\theta^\text{CPS}(x_{t-\Delta t} \mid x_t, c) = \mathcal{N}\left(x_{t-\Delta t};\ (1-(t-\Delta t))\hat{x}_0 + \sqrt{(t-\Delta t)^2-\sigma_t^2}\hat{x}_1,\ \sigma_t^2 I\right)$$
 
-$$\rho_t^{(i)} = \exp\!\left(-\frac{\|x_{t-\Delta t}^{(i)} - \mu_\theta^\text{CPS}\|^2 - \|x_{t-\Delta t}^{(i)} - \mu_{\theta_\text{old}}^\text{CPS}\|^2}{2\sigma_t^2}\right)$$
+$$\rho_t^{(i)} = \exp\left(-\frac{\Vert{}x_{t-\Delta t}^{(i)} - \mu_\theta^\text{CPS}\Vert^2 - \Vert{}x_{t-\Delta t}^{(i)} - \mu_{\theta_\text{old}}^\text{CPS}\Vert^2}{2\sigma_t^2}\right)$$
 
 ---
 
@@ -131,5 +131,5 @@ The paper finds a moderate cosine schedule (peaking at intermediate $t$) works b
 ## Limitations
 
 - Addresses the artifact problem only — does not reduce SDE compute cost (→ [MixGRPO](mix_grpo.md)) or ratio imbalance (→ [GRPO-Guard](grpo_guard.md)).
-- The stochasticity schedule $\{\sigma_t\}$ requires tuning per model and reward type.
+- The stochasticity schedule $\lbrace\sigma_t\rbrace$ requires tuning per model and reward type.
 - Assumes the base flow model is well-trained; a poor $v_\theta$ produces an unreliable $\hat{x}_0$ and $\hat{x}_1$, degrading manifold preservation.

@@ -34,27 +34,27 @@ DanceGRPO is **concurrent** with FlowGRPO (submitted 4 days later, May 2025) and
 
 The continuous reverse SDE with tunable stochasticity $\eta_t$:
 
-$$d\mathbf{z}_t = \left(f_t\mathbf{z}_t - \frac{1+\eta_t^2}{2}g_t^2\nabla\log p_t(\mathbf{z}_t)\right)dt + \eta_t g_t\,d\mathbf{W}_t$$
+$$d\mathbf{z}_t = \left(f_t\mathbf{z}_t - \frac{1+\eta_t^2}{2}g_t^2\nabla\log p_t(\mathbf{z}_t)\right)dt + \eta_t g_td\mathbf{W}_t$$
 
 where $f_t$, $g_t$ are the forward-process drift and diffusion coefficients, and the score is approximated as $\nabla\log p_t \approx -\epsilon_\theta(\mathbf{z}_t, t, c)/\sigma_t$. Setting $\eta_t = 1$ recovers full DDPM; $\eta_t = 0$ gives deterministic DDIM. For GRPO, $\eta_t > 0$ is required to have a tractable density. Euler-Maruyama discretisation yields:
 
-$$\pi_\theta(\mathbf{z}_{t-1} \mid \mathbf{z}_t, c) = \mathcal{N}\!\left(\mathbf{z}_{t-1};\ \mu_\theta^\text{DDPM}(\mathbf{z}_t, t, c),\ \eta_t^2 g_t^2 \Delta t\, I\right)$$
+$$\pi_\theta(\mathbf{z}_{t-1} \mid \mathbf{z}_t, c) = \mathcal{N}\left(\mathbf{z}_{t-1};\ \mu_\theta^\text{DDPM}(\mathbf{z}_t, t, c),\ \eta_t^2 g_t^2 \Delta t I\right)$$
 
 ### B. Rectified flow reverse SDE
 
-The flow ODE $d\mathbf{z}_t = v_\theta\,dt$ is converted to an SDE by adding score-corrected noise (same derivation as FlowGRPO):
+The flow ODE $d\mathbf{z}_t = v_\thetadt$ is converted to an SDE by adding score-corrected noise (same derivation as FlowGRPO):
 
-$$d\mathbf{z}_t = \left(v_\theta(\mathbf{z}_t, t, c) - \frac{\varepsilon_t^2}{2}\nabla\log p_t(\mathbf{z}_t)\right)dt + \varepsilon_t\,d\mathbf{W}_t$$
+$$d\mathbf{z}_t = \left(v_\theta(\mathbf{z}_t, t, c) - \frac{\varepsilon_t^2}{2}\nabla\log p_t(\mathbf{z}_t)\right)dt + \varepsilon_td\mathbf{W}_t$$
 
 Score approximation via Tweedie: $\nabla\log p_t(\mathbf{z}_t) \approx (\hat{\mathbf{z}}_0 - \mathbf{z}_t)/t^2$ where $\hat{\mathbf{z}}_0 = \mathbf{z}_t - tv_\theta(\mathbf{z}_t,t,c)$. Discretisation gives:
 
-$$\pi_\theta(\mathbf{z}_{t-\Delta t} \mid \mathbf{z}_t, c) = \mathcal{N}\!\left(\mathbf{z}_{t-\Delta t};\ \mu_\theta^\text{flow}(\mathbf{z}_t, t, c),\ \varepsilon_t^2\Delta t\, I\right)$$
+$$\pi_\theta(\mathbf{z}_{t-\Delta t} \mid \mathbf{z}_t, c) = \mathcal{N}\left(\mathbf{z}_{t-\Delta t};\ \mu_\theta^\text{flow}(\mathbf{z}_t, t, c),\ \varepsilon_t^2\Delta t I\right)$$
 
 ### Unified importance ratio
 
 Both cases yield the same functional form:
 
-$$\rho_t^{(i)} = \frac{\pi_\theta(\mathbf{z}_{t-1}^{(i)} \mid \mathbf{z}_t^{(i)}, c)}{\pi_{\theta_\text{old}}(\mathbf{z}_{t-1}^{(i)} \mid \mathbf{z}_t^{(i)}, c)} = \exp\!\left(-\frac{\|\mathbf{z}_{t-1}^{(i)} - \mu_\theta\|^2 - \|\mathbf{z}_{t-1}^{(i)} - \mu_{\theta_\text{old}}\|^2}{2\sigma_\text{SDE}^2}\right)$$
+$$\rho_t^{(i)} = \frac{\pi_\theta(\mathbf{z}_{t-1}^{(i)} \mid \mathbf{z}_t^{(i)}, c)}{\pi_{\theta_\text{old}}(\mathbf{z}_{t-1}^{(i)} \mid \mathbf{z}_t^{(i)}, c)} = \exp\left(-\frac{\Vert\mathbf{z}_{t-1}^{(i)} - \mu_\theta\Vert^2 - \Vert\mathbf{z}_{t-1}^{(i)} - \mu_{\theta_\text{old}}\Vert^2}{2\sigma_\text{SDE}^2}\right)$$
 
 where $\sigma_\text{SDE}^2$ is $\eta_t^2 g_t^2\Delta t$ (DDPM) or $\varepsilon_t^2\Delta t$ (flow), respectively.
 
@@ -64,7 +64,7 @@ where $\sigma_\text{SDE}^2$ is $\eta_t^2 g_t^2\Delta t$ (DDPM) or $\varepsilon_t
 
 **Issue**: Video generation runs far more denoising steps than image generation (longer temporal sequences, more spatial tokens). Storing all $T$ SDE transitions for gradient computation is infeasible for high-resolution video.
 
-**Idea**: Randomly subsample a $\tau$-fraction of timesteps (default $\tau = 0.6$) for the GRPO loss, rather than summing over all $T$ steps. At each iteration, draw $\mathcal{T}_\text{sub} \subset \{1, \ldots, T\}$ with $|\mathcal{T}_\text{sub}| = \lceil\tau T\rceil$.
+**Idea**: Randomly subsample a $\tau$-fraction of timesteps (default $\tau = 0.6$) for the GRPO loss, rather than summing over all $T$ steps. At each iteration, draw $\mathcal{T}_\text{sub} \subset \lbrace1, \ldots, T\rbrace$ with $|\mathcal{T}_\text{sub}| = \lceil\tau T\rceil$.
 
 **Why this works**: The GRPO gradient is an expectation over timesteps. Subsampling gives an unbiased estimate of that expectation, with variance inversely proportional to $|\mathcal{T}_\text{sub}|$. Empirically, $\tau = 0.6$ retains sufficient signal while reducing memory by $\sim 40\%$.
 
@@ -78,7 +78,7 @@ where $\sigma_\text{SDE}^2$ is $\eta_t^2 g_t^2\Delta t$ (DDPM) or $\varepsilon_t
 
 **Why this works**: The group baseline subtracts the mean reward, converting absolute scores to relative rankings within each prompt's group. This makes the training signal invariant to reward scale, which is especially important when mixing reward sources (e.g., aesthetic score in [0, 10] with binary safety in {0, 1}).
 
-$$\hat{A}^{(i)} = \frac{r^{(i)} - \overline{r}}{\mathrm{std}(\{r^{(j)}\}) + \delta}, \quad r^{(i)} = \sum_k w_k r_k(x_0^{(i)}, c)$$
+$$\hat{A}^{(i)} = \frac{r^{(i)} - \overline{r}}{\mathrm{std}(\lbracer^{(j)}\rbrace) + \delta}, \quad r^{(i)} = \sum_k w_k r_k(x_0^{(i)}, c)$$
 
 ---
 
@@ -87,7 +87,7 @@ $$\hat{A}^{(i)} = \frac{r^{(i)} - \overline{r}}{\mathrm{std}(\{r^{(j)}\}) + \del
 PPO-clipped GRPO with timestep subsampling, applied uniformly across all backbone types:
 
 $$\boxed{
-\mathcal{L}_\text{DanceGRPO}(\theta) = -\mathbb{E}\!\left[\frac{1}{N_g}\sum_{i=1}^{N_g}\frac{1}{|\mathcal{T}_\text{sub}|}\sum_{t \in \mathcal{T}_\text{sub}} \min\!\left(\rho_t^{(i)}\hat{A}^{(i)},\ \mathrm{clip}\!\left(\rho_t^{(i)}, 1{-}\epsilon, 1{+}\epsilon\right)\hat{A}^{(i)}\right)\right]
+\mathcal{L}_\text{DanceGRPO}(\theta) = -\mathbb{E}\left[\frac{1}{N_g}\sum_{i=1}^{N_g}\frac{1}{|\mathcal{T}_\text{sub}|}\sum_{t \in \mathcal{T}_\text{sub}} \min\left(\rho_t^{(i)}\hat{A}^{(i)},\ \mathrm{clip}\left(\rho_t^{(i)}, 1{-}\epsilon, 1{+}\epsilon\right)\hat{A}^{(i)}\right)\right]
 }$$
 
 where $\mathcal{T}_\text{sub}$ is a randomly drawn $\tau$-fraction of all timesteps.

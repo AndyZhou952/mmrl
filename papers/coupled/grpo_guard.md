@@ -58,7 +58,7 @@ $$\delta_t = \begin{cases} 1/\Delta t & \text{for flow matching (FlowGRPO, MixGR
 ## Training Objective
 
 $$\boxed{
-\mathcal{L}_\text{GRPO-Guard}(\theta) = -\mathbb{E}\!\left[\frac{1}{N_g}\sum_{i=1}^{N_g}\frac{1}{T}\sum_{t=1}^{T}\delta_t\cdot\min\!\left(\hat\rho_t^{(i)}\hat{A}^{(i)},\ \mathrm{clip}\!\left(\hat\rho_t^{(i)}, 1{-}\epsilon, 1{+}\epsilon\right)\hat{A}^{(i)}\right)\right]
+\mathcal{L}_\text{GRPO-Guard}(\theta) = -\mathbb{E}\left[\frac{1}{N_g}\sum_{i=1}^{N_g}\frac{1}{T}\sum_{t=1}^{T}\delta_t\cdot\min\left(\hat\rho_t^{(i)}\hat{A}^{(i)},\ \mathrm{clip}\left(\hat\rho_t^{(i)}, 1{-}\epsilon, 1{+}\epsilon\right)\hat{A}^{(i)}\right)\right]
 }$$
 
 Compared to plain FlowGRPO: $\rho_t \to \hat\rho_t$ (RatioNorm) and an extra $\delta_t$ factor. Sampling, advantage estimation, and KL penalty are unchanged.
