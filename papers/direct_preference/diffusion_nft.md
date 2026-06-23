@@ -32,6 +32,8 @@ DiffusionNFT takes the most radical departure from the policy-gradient paradigm:
 
 **Why this works**: The flow matching training loss already sums over all noise levels $t$ for a given clean image $x_0$. If we weight each image's contribution by how good it is (reward $r^{(i)}$), the model learns to assign higher velocity to the regions of image space that lead to better-rewarded outputs. The forward noising step $x_t = (1-t)x_0 + t\epsilon$ is the bridge: given a generated image $x_0^{(i)}$, construct noisy versions at all $t$ and train $v_\theta$ on them. The sampler used to produce $x_0^{(i)}$ is irrelevant to the gradient computation.
 
+**Result**: Fully **CFG-free**, DiffusionNFT hits **GenEval 0.98 in 1.7k iterations** vs FlowGRPO's 0.95 in >5k steps *with* CFG (Tab. 1), and is **up to 25× more efficient** than FlowGRPO (3×–25× across four tasks; Figs. 1, 6). At 1.7k iterations it also reaches PickScore 23.80 / HPSv2.1 0.331 / Aesthetic 6.01 / ImageReward 1.49, surpassing CFG-based larger models (SD3.5-L 8B, FLUX.1-dev 12B) from a CFG-free SD3.5-M base (GenEval 0.24).
+
 ---
 
 ## Implicit Positive and Negative Policies
@@ -109,16 +111,31 @@ Repeat (iteration i):
 
 ## Reference Implementation (VeRL-Omni)
 
-Condensed from [`diffusion_algos.py`](https://github.com/verl-project/verl-omni/blob/main/verl_omni/trainer/diffusion/diffusion_algos.py) (`@register_diffusion_loss("diffusion_nft")`). `DiffusionNFTLoss` builds the implicit negative prediction from the current and old (EMA) predictions, weights the positive/negative clean-target MSE by the reward probability, and adds a KL term against the reference prediction:
+Condensed from [`DiffusionNFTLoss` in `diffusion_algos.py`](https://github.com/verl-project/verl-omni/blob/main/verl_omni/trainer/diffusion/diffusion_algos.py) (`@register_diffusion_loss("diffusion_nft")`). Two stages — (1) the trainer turns raw rewards into a per-sample **optimality probability** `reward_prob ∈ [0,1]` (`prepare_actor_batch`), then (2) the loss reinforces the positive implicit velocity and suppresses the negative one, each as a Tweedie clean-image MSE with adaptive weighting, plus a KL anchor to the reference:
 
 ```python
+# (1) reward → optimality probability  (DiffusionNFT Sec. 3.3, prepare_actor_batch)
+adv = group_normalise(raw_reward, uid)                 # r - mean_group, optionally / std  (GRPO-style)
+adv = clamp(adv, -c.adv_clip_max, c.adv_clip_max)      # adv_mode: all | positive_only | binary | ...
+reward_prob = clamp(adv / c.adv_clip_max / 2 + 0.5, 0, 1)   # w ∈ [0,1]; w>0.5 ⇒ above-average reward
+
+# (2) forward-process loss
 @register_diffusion_loss("diffusion_nft")
-def loss_diffusion_nft(forward, old, ref_forward, x0, reward_prob, beta, cfg):
-    neg = (1.0 + beta) * old - beta * forward            # implicit negative policy
-    pos_mse = reward_prob       * mse(forward, x0)       # high-reward → positive field
-    neg_mse = (1 - reward_prob) * mse(neg,     x0)       # low-reward  → negative field
-    kl = mse(forward, ref_forward)                       # KL reg to reference
-    return mean(pos_mse + neg_mse) + cfg.diffusion_loss.beta_kl * mean(kl)
+def loss_diffusion_nft(forward, old, ref_forward, xt, t, x0, reward_prob, cfg):
+    c, beta = cfg.diffusion_loss, cfg.diffusion_loss.mix_beta
+    old, ref_forward = old.detach(), ref_forward.detach()
+    w   = reward_prob
+    pos = beta * forward + (1 - beta) * old             # positive implicit velocity
+    neg = (1 + beta) * old - beta * forward             # negative implicit velocity
+    x0_pos = xt - t * pos                               # Tweedie → clean image
+    x0_neg = xt - t * neg
+    wp = abs(x0_pos - x0).mean(dims).clip(min=c.adaptive_weight_min)   # adaptive weights (no grad)
+    wn = abs(x0_neg - x0).mean(dims).clip(min=c.adaptive_weight_min)
+    pos_loss = ((x0_pos - x0) ** 2 / wp).mean(dims)
+    neg_loss = ((x0_neg - x0) ** 2 / wn).mean(dims)
+    policy = (w * pos_loss + (1 - w) * neg_loss) / beta * c.adv_clip_max
+    kl = ((forward - ref_forward) ** 2).mean()          # KL reg to reference forward field
+    return policy.mean() + c.ref_kl_coef * kl
 ```
 
 ---

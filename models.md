@@ -21,11 +21,11 @@ Links to algorithm notes in this repo use relative paths (e.g. `papers/policy_gr
 | Model | Org | Date | Task | RL methods used |
 |---|---|---|---|---|
 | [Step-Video-T2V](#step-video-t2v) | StepFun | 2025-02 | T2V | Video-DPO |
-| [HunyuanVideo](#hunyuanvideo--hunyuanvideo-15) | Tencent | 2025-12 | T2V, I2V | offline DPO + online RLHF |
-| [HunyuanVideo 1.5](#hunyuanvideo--hunyuanvideo-15) | Tencent | 2025-11 | T2V, I2V | offline DPO + online RLHF |
+| [HunyuanVideo](#hunyuanvideo-and-hunyuanvideo-15) | Tencent | 2025-12 | T2V, I2V | offline DPO + online RLHF |
+| [HunyuanVideo 1.5](#hunyuanvideo-and-hunyuanvideo-15) | Tencent | 2025-11 | T2V, I2V | offline DPO + online RLHF |
 | [Qwen2.5-Omni](#qwen25-omni) | Alibaba | 2025-03 | VLM + speech | DPO (offline) + GRPO (online) |
-| [Wan 2.1](#wan-21--wan-22) | Alibaba | 2025-03 | T2V | not disclosed |
-| [Wan 2.2](#wan-21--wan-22) | Alibaba | 2025-07 | T2V, I2V | RLHF (not disclosed) |
+| [Wan 2.1](#wan-21-and-wan-22) | Alibaba | 2025-03 | T2V | not disclosed |
+| [Wan 2.2](#wan-21-and-wan-22) | Alibaba | 2025-07 | T2V, I2V | RLHF (not disclosed) |
 | [Seedream 4.0](#seedream-40) | ByteDance | 2025-09 | T2I + editing | RLHF (not disclosed) |
 | [HunyuanImage 3.0](#hunyuanimage-30) | Tencent | 2025-09 | T2I | DPO + MixGRPO + SRPO + ReDA† |
 | [Qwen-Image](#qwen-image) | Alibaba | 2025-08 | T2I + editing | DPO + GRPO |
@@ -64,7 +64,7 @@ Links to algorithm notes in this repo use relative paths (e.g. `papers/policy_gr
 
 ---
 
-### HunyuanVideo / HunyuanVideo 1.5
+### HunyuanVideo and HunyuanVideo 1.5
 
 | Field | HunyuanVideo | HunyuanVideo 1.5 |
 |---|---|---|
@@ -115,7 +115,7 @@ Note: The RL here targets **multimodal understanding** (visual reasoning, speech
 
 ---
 
-### Wan 2.1 / Wan 2.2
+### Wan 2.1 and Wan 2.2
 
 | Field | Wan 2.1 | Wan 2.2 |
 |---|---|---|

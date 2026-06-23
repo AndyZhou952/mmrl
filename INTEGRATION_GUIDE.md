@@ -275,7 +275,14 @@ Rules:
 
 #### Reference Implementation (VeRL-Omni)
 
-If the method's **loss** is registered in VeRL-Omni's [`diffusion_algos.py`](https://github.com/verl-project/verl-omni/blob/main/verl_omni/trainer/diffusion/diffusion_algos.py) (register names: `flow_grpo`, `dance_grpo`, `flow_dppo`, `grpo_guard`, `dpo`, `diffusion_nft`), add a short subsection `## Reference Implementation (VeRL-Omni)` **after** `## Algorithm` containing a **condensed** functional form of the registered loss (≈ 5–10 lines), and link the upstream file. Do **not** transcribe the full class — keep only the core math so a reader can map the page's objective onto the runnable code. Keep the rollout/sampling pseudocode in `## Algorithm` (that part is not in the registry). Example condensed form:
+If the method's **loss** is registered in VeRL-Omni's [`diffusion_algos.py`](https://github.com/verl-project/verl-omni/blob/main/verl_omni/trainer/diffusion/diffusion_algos.py) (register names: `flow_grpo`, `dance_grpo`, `flow_dppo`, `grpo_guard`, `dpo`, `diffusion_nft`), add a short subsection `## Reference Implementation (VeRL-Omni)` **after** `## Algorithm` containing a **condensed** functional form of the registered loss (≈ 5–10 lines), and link the upstream file. Do **not** transcribe the full class — keep only the core math so a reader can map the page's objective onto the runnable code. Keep the rollout/sampling pseudocode in `## Algorithm` (that part is not in the registry).
+
+Three rules for the condensed form:
+- **FlowGRPO-family extensions** (GRPO-Guard, FlowDPPO, …) — present the snippet as a **diff against `FlowGRPOLoss`**: keep the shared body verbatim and mark every changed line with a trailing `# <<<` comment naming what changed, so the delta is obvious at a glance.
+- **Sampler / scheduler improvements** that are *not* a registered loss (e.g. CPS = `sde_type="cps"`) — show the relevant **scheduler branch diff** (what changes when the flag is enabled vs. the default), link the scheduler file + the example that enables it, and state which config flag selects it.
+- **Methods with non-trivial reward preprocessing** (e.g. DiffusionNFT's reward → `reward_prob`) — include the reward/advantage preparation step too, not just the loss, so the snippet is runnable end-to-end in spirit.
+
+Example condensed form:
 
 ```python
 @register_diffusion_loss("flow_grpo")   # also registered for "dance_grpo"

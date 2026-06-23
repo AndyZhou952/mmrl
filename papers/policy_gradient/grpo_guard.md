@@ -41,6 +41,8 @@ where $\epsilon_t^{(i)}$ is the noise injected at step $t$ for sample $i$.
 
 **Why this works**: After RatioNorm, $\mathbb{E}[\log\hat\rho_t] \approx 0$ and $\mathrm{std}(\log\hat\rho_t) \approx 1$ for all $t$. This matches PPO's design assumption — the clip band $[1-\epsilon, 1+\epsilon]$ now activates as intended, constraining large updates when the policy has drifted far from the old policy.
 
+**Result**: RatioNorm restores a balanced, step-consistent ratio (Fig. 2) so the clip engages — the payoff shows in the **"Gold score"** (true quality, vs proxy reward): on SD3.5-M it rises while the proxy holds — GenEval Gold **0.84 → 0.89**, TextRender Gold **0.88 → 0.99**, PickScore Gold **1.16 → 1.20**; on FLUX.1-dev GenEval Gold **0.88 → 1.02** (Tab. 1) — i.e. much less over-optimization at equal-or-better proxy reward.
+
 ---
 
 ## Problem 2 — Gradient magnitude varies ~20× across timesteps; late steps dominate
@@ -51,7 +53,9 @@ where $\epsilon_t^{(i)}$ is the noise injected at step $t$ for sample $i$.
 
 $$\delta_t = \begin{cases} 1/\Delta t & \text{for flow matching (FlowGRPO, MixGRPO)} \\ \beta_t/\Delta t & \text{for DDPM (DanceGRPO), where } \beta_t \text{ is the noise schedule} \end{cases}$$
 
-**Why this works**: $\delta_t$ scales each step's contribution inversely proportional to its variance, restoring approximately uniform gradient magnitudes across timesteps. The paper reports reduction from ~20× variation to ~2.5× variation, which substantially stabilises training.
+**Why this works**: $\delta_t$ scales each step's contribution inversely proportional to its variance, restoring approximately uniform gradient magnitudes across timesteps.
+
+**Result**: Gradient-magnitude variation across timesteps drops from **~20× to ~2.5×** (Fig. 3), so coarse-structure (high-noise) steps are no longer drowned out by fine-detail steps — this is what makes the Gold-score gains in Problem 1 stable rather than transient.
 
 ---
 
@@ -94,18 +98,20 @@ All sampling steps and advantage computation unchanged.
 
 ## Reference Implementation (VeRL-Omni)
 
-Condensed from [`diffusion_algos.py`](https://github.com/verl-project/verl-omni/blob/main/verl_omni/trainer/diffusion/diffusion_algos.py) (`@register_diffusion_loss("grpo_guard")`). `GRPOGuardLoss` takes the reverse-SDE means (`prev_sample_mean`, `old_prev_sample_mean`), forms a mean-drift bias scaled by the diffusion coefficient (RatioNorm), applies PPO-clip, and divides by `sqrt_dt**2` (= $\Delta t$) for timestep-invariant gradient scaling ($\delta_t = 1/\Delta t$):
+Condensed from [`GRPOGuardLoss` in `diffusion_algos.py`](https://github.com/verl-project/verl-omni/blob/main/verl_omni/trainer/diffusion/diffusion_algos.py) (`@register_diffusion_loss("grpo_guard")`). It is **identical to `FlowGRPOLoss` except the four `# <<<` lines** — it adds a reverse-SDE mean-drift bias projected onto the per-step scale `sqrt_dt·σ_t` (RatioNorm), then rescales the loss by `1/sqrt_dt²` so gradient magnitude is consistent across timesteps ($\delta_t = 1/\Delta t$). The extra inputs `prev_sample_mean`, `old_prev_sample_mean`, `std_dev_t`, `sqrt_dt` come from the rollout:
 
 ```python
 @register_diffusion_loss("grpo_guard")
-def loss_grpo_guard(old_lp, lp, mean_θ, mean_old, std_t, sqrt_dt, adv, cfg):
+def loss_grpo_guard(old_lp, lp, adv, mean_θ, mean_old, std_t, sqrt_dt, cfg):
     c = cfg.diffusion_loss
-    adv = clamp(adv, -c.adv_clip_max, c.adv_clip_max)
-    bias  = ((mean_θ - mean_old) ** 2).sum(-1) / (2 * std_t ** 2)   # RatioNorm mean-drift
-    ratio = exp((lp - old_lp) + bias)
-    unclipped = -adv * ratio
-    clipped   = -adv * clamp(ratio, 1 - c.clip_ratio, 1 + c.clip_ratio)
-    return mean(max(unclipped, clipped)) / sqrt_dt ** 2            # δ_t = 1/Δt reweighting
+    adv = clamp(adv, -c.adv_clip_max, c.adv_clip_max)              # same as FlowGRPO
+    scale        = sqrt_dt.mean() * std_t.mean()                   # <<< shared per-step scalar
+    mean_diff_sq = ((mean_θ - mean_old) ** 2).mean(non_batch_dims) # <<< reverse-SDE mean drift
+    ratio_bias   = mean_diff_sq / (2 * scale ** 2)                 # <<< RatioNorm bias
+    ratio = exp((lp - old_lp + ratio_bias) * scale)               # <<< FlowGRPO: exp(lp - old_lp)
+    unclipped = -adv * ratio                                      # ┐
+    clipped   = -adv * clamp(ratio, 1 - c.clip_ratio, 1 + c.clip_ratio)  # ├ identical PPO-clip body
+    return mean(max(unclipped, clipped)) / sqrt_dt.mean() ** 2     # <<< FlowGRPO: mean(...); here ÷Δt
 ```
 
 ---

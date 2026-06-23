@@ -28,6 +28,8 @@ DGPO bridges two lines of work: (1) **GRPO-style online RL** — generating fres
 
 **Why this works**: Diffusion-DPO showed that $\log p_\theta(x_0|c)$ can be approximated by the ELBO — a sum of per-timestep MSE losses. DGPO extends this from binary preference pairs to group rankings, and from an offline dataset to an online setting where groups are generated fresh each iteration. The ELBO decomposition does not depend on how $x_0$ was generated (ODE or SDE), so any sampler works.
 
+**Result**: On SD3.5-M, DGPO reaches **GenEval 0.97 vs FlowGRPO 0.95** (base 0.63) and **OCR 0.96 vs 0.92**, with better human-preference proxies (PickScore **23.89 vs 23.31**, ImageReward 1.32 vs 1.28, Aesthetic 6.08 vs 5.92; Tab. 1–2) — while training **~20× faster** than SOTA and **~30× faster than FlowGRPO** to the same GenEval (Fig. 1), confirming the ODE-only ELBO route loses no quality.
+
 ---
 
 ## Core Derivation

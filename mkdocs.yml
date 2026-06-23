@@ -1,0 +1,89 @@
+site_name: Diffusion-RL Survey
+site_description: A survey of reinforcement learning algorithms for multimodal (image/video) generative models, aligned with the VeRL-Omni ubiquitous language.
+repo_url: https://github.com/AndyZhou952/diffusion-rl-survey
+repo_name: diffusion-rl-survey
+
+# The markdown lives at the repository root (README.md, papers/, …). The `same-dir`
+# plugin lets docs_dir be the repo root without the site_dir-inside-docs_dir conflict.
+docs_dir: .
+site_dir: site
+
+plugins:
+  - search
+  - same-dir
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - content.code.copy
+    - toc.follow
+
+markdown_extensions:
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.details
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+
+extra_javascript:
+  - docs/javascripts/katex.js
+  - https://unpkg.com/katex@0/dist/katex.min.js
+  - https://unpkg.com/katex@0/dist/contrib/auto-render.min.js
+
+extra_css:
+  - https://unpkg.com/katex@0/dist/katex.min.css
+
+# Keep build output clean: ignore everything that is not part of the survey.
+exclude_docs: |
+  .github/
+  site/
+  node_modules/
+  scratchpad/
+  requirements-docs.txt
+
+nav:
+  - Home: README.md
+  - Reading Guide: papers/READING_GUIDE.md
+  - Prerequisites:
+      - Multimodal models: papers/prerequisites/multimodal_basics.md
+      - Flow matching: papers/prerequisites/flow_matching_basics.md
+      - GRPO / PPO: papers/prerequisites/grpo_basics.md
+  - Policy Gradient:
+      - FlowGRPO: papers/policy_gradient/flow_grpo.md
+      - DanceGRPO: papers/policy_gradient/dance_grpo.md
+      - MixGRPO: papers/policy_gradient/mix_grpo.md
+      - FlowGRPO-CPS: papers/policy_gradient/cps.md
+      - GRPO-Guard: papers/policy_gradient/grpo_guard.md
+      - UniGRPO: papers/policy_gradient/uni_grpo.md
+  - Direct Preference:
+      - SRPO: papers/direct_preference/srpo.md
+      - DiffusionNFT: papers/direct_preference/diffusion_nft.md
+      - AWM: papers/direct_preference/awm.md
+      - DGPO: papers/direct_preference/dgpo.md
+  - Academia (long tail): papers/academia.md
+  - Industry Models: models.md
+  - Reference:
+      - Paper Index: papers/INDEX.md
+      - Notation: papers/NOTATION.md
+      - Integration Guide: INTEGRATION_GUIDE.md

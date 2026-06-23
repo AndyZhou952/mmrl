@@ -32,6 +32,8 @@ This advantage flows into both the text gradient (via token-level importance rat
 
 **Why this works**: Sharing the advantage couples text and image optimisation through a common scalar. If a better reasoning chain $y^{(i)}$ produces a better image $x_0^{(i)}$, the shared $\hat{A}^{(i)}$ rewards both the tokens and the denoising steps that led to that outcome — encouraging the model to learn the reasoning-to-image correlation.
 
+**Result**: Joint optimisation beats optimising either component alone — UniGRPO reports **GenEval 0.90** and **Text-Alignment 0.8381**, above FlowGRPO-without-thinking (0.88 / 0.8112) and TextGRPO-alone (0.8078 TA) (Tab. 1). <!-- TODO(verify): auto-fetched from ar5iv for arXiv 2603.23500 (future-dated); confirm these numbers against the published paper before relying on them. -->.
+
 ### Rollout structure
 
 For each prompt $c$:
@@ -50,6 +52,8 @@ $$\pi_\theta^\text{img}(x_{t_k-\Delta t} \mid x_{t_k}, c, y^{(i)}) = \mathcal{N}
 
 **Why this works**: The training objective optimises the conditional policy $\pi_\theta^\text{img}$, which is the actual learnable quantity. CFG is a post-hoc inference trick that improves the output without being part of the training distribution. Removing it from training restores the tractability of the importance ratio and halves the forward-pass count per SDE step.
 
+**Result**: <!-- TODO: add the CFG-removal ablation from the paper — per-step compute saved (~2× fewer forward passes) and the quality delta vs training-with-CFG. Not reliably extracted (arXiv 2603.23500). -->Removes the second (unconditional) forward pass per SDE step (~2× less training compute) while keeping the importance ratio well-defined; exact ablation numbers to be filled from the paper.
+
 ---
 
 ## Problem 3 — Ratio left-shift and KL regularisation in the wrong space
@@ -65,6 +69,8 @@ $$\log \tilde{r}_{t_k}^{(i)} = -\Delta\mu_{t_k} \cdot \epsilon_{t_k}^{(i)}, \qua
 $$\mathcal{L}_\text{MSE}(\theta) = \mathbb{E}_{t_k \in T_\text{SDE},i}\left[\left\Vert{}v_\theta(x_{t_k}^{(i)}, t_k, c, y^{(i)}) - v_{\theta_\text{ref}}(x_{t_k}^{(i)}, t_k, c, y^{(i)})\right\Vert^2\right]$$
 
 **Why this works**: The velocity field $v_\theta$ is the direct output of the model; penalising its $\ell_2$ distance from the reference $v_{\theta_\text{ref}}$ directly constrains the learned dynamics, not just the latent distribution. This is analogous to weight-decay on the output, but semantically meaningful in the flow space.
+
+**Result**: <!-- TODO: add the RatioNorm + velocity-space-MSE ablation numbers (clip-activation / stability / quality) from the paper; not reliably extracted (arXiv 2603.23500). -->RatioNorm restores clip activation (cf. [GRPO-Guard](grpo_guard.md), which reports the ratio centring and ~20×→2.5× gradient-variance reduction this borrows) and the velocity-space MSE curbs policy drift; UniGRPO-specific ablation figures to be filled from the paper.
 
 ---
 

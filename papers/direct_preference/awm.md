@@ -38,6 +38,8 @@ $$\mathcal{L}_\text{AWM}(\theta) = \mathbb{E}_{t,\epsilon}\left[\frac{1}{N}\sum_
 
 **Why this works**: The clean target eliminates the noise residual variance completely. The advantage weighting provides the RL signal: positive-advantage samples push $v_\theta$ toward the target (reinforcing the behaviour), while negative-advantage samples push $v_\theta$ away from the target (suppressing the behaviour). Crucially, this is the **exact same loss** as flow matching pretraining — but with advantage weighting added. No architectural changes, no SDE, no importance ratio.
 
+**Result**: AWM **matches FlowGRPO on GenEval at ~24× speedup** (SD3.5-M), with comparable-or-better PickScore on FLUX and significantly improved OCR accuracy — the clean target removes the noisy-IS-loss variance without an SDE or reference lookup. See the consolidated [Results](#results) table below.
+
 ---
 
 ## The Pretraining Analogy

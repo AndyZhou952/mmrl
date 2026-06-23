@@ -1,0 +1,43 @@
+name: Monthly Maintenance (lint + paper sweep)
+
+on:
+  schedule:
+    # 09:00 UTC on the 1st of each month
+    - cron: '0 9 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  lint-and-sweep:
+    name: Math lint + arXiv candidate sweep
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # 1) Health check: GitHub-rendering math lint over all markdown.
+      - name: Math lint
+        run: |
+          python .github/scripts/lint_math.py \
+            $(find . -name '*.md' -not -path './.git/*' -not -path './site/*' | sort)
+
+      # 2) arXiv sweep for new in-scope papers (AI step runs only if the secret is set).
+      - name: Fetch candidate papers
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python .github/scripts/fetch_papers.py --days 35 --out candidates.md
+
+      # 3) Open a triage issue with the candidate list.
+      - name: Open triage issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TITLE="Monthly paper sweep — $(date -u +%Y-%m)"
+          gh issue create --title "$TITLE" --body-file candidates.md --label "paper-sweep" \
+            || gh issue create --title "$TITLE" --body-file candidates.md

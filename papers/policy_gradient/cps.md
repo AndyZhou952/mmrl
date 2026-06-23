@@ -32,6 +32,8 @@ The excess $\sqrt{s_t^2\Delta t}$ is **coefficient mismatch**: the sample sits *
 
 **Why this works**: The rectified flow interpolant $x_t = (1-t)x_0 + t\epsilon$ defines a manifold parametrised by $(t, x_0, \epsilon)$. A step that preserves the coefficients keeps $x_{t-\Delta t}$ exactly on the manifold at timestep $t-\Delta t$ — it is a valid sample from the forward process evaluated at that time, so reward models evaluate it as if it were a natural noisy image.
 
+**Result**: CPS produces noise-free intermediate samples where Flow-SDE shows "severe noise" (Fig. 1), and the cleaner reward signal improves both final reward and convergence speed: PickScore **23.90 → 24.25** on FLUX.1-dev and **23.39 → 23.78** on FLUX.1-schnell (Tab. 2), HPSv2 **0.364 → 0.377** (Tab. 3), OCR **0.966 → 0.975** (Tab. 4); GenEval matches Flow-GRPO (both 0.97) but "converges to the optimal result at a faster speed" (Figs. 4–6).
+
 ---
 
 ## Diagnosing the Coefficient Mismatch
@@ -111,6 +113,29 @@ GRPO advantage, clip objective, KL penalty: all unchanged.
 ```
 
 Reward calculation and gradient update steps are identical to the base method.
+
+---
+
+## Reference Implementation (VeRL-Omni)
+
+CPS is **not a loss** — it is a sampler variant selected by the config flag `sde_type: sde → cps` (FlowGRPO/DanceGRPO/MixGRPO keep their loss). It lives in [`flow_match_sde.py::sample_previous_step`](https://github.com/verl-project/verl-omni/blob/main/verl_omni/pipelines/schedulers/flow_match_sde.py) (enabled e.g. in `examples/flowgrpo_trainer/run_sd35_medium_ocr_lora.sh` via `rollout.algo.sde_type="cps"`). Here `sigma` is the flow noise level at the current step and `sigma_prev` at the next; the only difference from the default `"sde"` branch is how `prev_sample_mean` and the noise term are built:
+
+```python
+# sde_type == "sde"  (FlowGRPO): Euler step + extra sqrt(-dt) noise → noise level overshoots schedule
+std_dev_t        = sqrt(sigma / (1 - sigma)) * noise_level
+prev_sample_mean = sample * (1 + std_dev_t**2/(2*sigma) * dt) \
+                 + model_output * (1 + std_dev_t**2*(1-sigma)/(2*sigma)) * dt
+prev_sample      = prev_sample_mean + std_dev_t * sqrt(-dt) * noise          # <<< uncompensated noise
+
+# sde_type == "cps": decompose into clean + noise directions, coefficients preserve the schedule
+std_dev_t        = sigma_prev * sin(noise_level * pi/2)                       # <<< σ_t (bounded by σ_prev)
+x0_hat           = sample - sigma * model_output                             # <<< Tweedie clean image
+eps_hat          = sample + model_output * (1 - sigma)                       # <<< noise direction
+prev_sample_mean = x0_hat * (1 - sigma_prev) + eps_hat * sqrt(sigma_prev**2 - std_dev_t**2)  # <<< coeff-preserving
+prev_sample      = prev_sample_mean + std_dev_t * noise                      # <<< no sqrt(-dt): level == σ_prev
+```
+
+The `cps` `prev_sample_mean` is exactly the boxed CPS formula with $t{-}\Delta t \leftrightarrow$ `sigma_prev`, $\sigma_t \leftrightarrow$ `std_dev_t`; the variance check $(\sigma_\text{prev}^2 - \sigma_t^2) + \sigma_t^2 = \sigma_\text{prev}^2$ is what keeps the sample on-manifold. (`dance_sde` is a third, numerically-stable variant in the same function.)
 
 ---
 

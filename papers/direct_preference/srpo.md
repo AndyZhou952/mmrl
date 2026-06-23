@@ -38,6 +38,8 @@ This uses the same Tweedie formula as [NOTATION.md §3](../NOTATION.md), but sub
 
 **Why this works**: The gradient $\partial r / \partial \theta$ passes through only **one network call** $v_\theta(x_t, t, c)$. There is no rollout, no iterative denoising chain, no trajectory storage. The reward gradient flows back through a single velocity prediction, making this $T\times$ cheaper than full-chain backpropagation. Because $t$ is sampled uniformly over $[0,1]$, every noise level (including early high-noise steps) participates in training — all timesteps are aligned, not just the last few.
 
+**Result**: Direct-Align gives SRPO **75× greater training efficiency than DanceGRPO** (§4.3), fine-tuning FLUX.1-dev to convergence in **~10 min on 32 H20 GPUs** (Fig. 1) while aligning all timesteps. On its own, though, it is not enough — the Fig. 9(d) ablation shows removing it "reduced realism and increased vulnerability to reward hacking," and Direct-Align alone reaches only **5.9% realism**, which Problem 2's relative reward lifts to 38.9%.
+
 ### Training procedure (Direct-Align)
 
 1. Fix a noise prior $\epsilon_\text{gt} \sim \mathcal{N}(0,I)$ per image at the start of training (held constant).
@@ -70,6 +72,8 @@ where:
 - $C_- = \mathrm{embed}(c_-)$: embedding of a *negative* condition, e.g., *"an AI-generated image"*
 
 **Why this works**: The reward is a **difference** between two alignment scores. If the policy improves by becoming more photorealistic, $f_\text{img}(x_0)^\top C_+$ increases while $f_\text{img}(x_0)^\top C_-$ decreases — the difference magnifies the signal. Crucially, the relative score is computed entirely by the frozen reward model's embedding function: no additional training is needed. Changing the optimisation target (e.g., from photorealism to oil-painting style) requires only swapping $(c_+, c_-)$.
+
+**Result**: The relative reward drives SRPO's headline human-evaluation gains on FLUX.1-dev — excellent-rate for **Realism 8.2% → 38.9%** (3.7×), **Aesthetics 9.8% → 40.5%** (3.1×), **Overall 5.3% → 29.4%** (Tab. 1, Fig. 4) — and "effectively prevents reward hacking" vs absolute multi-reward setups (Fig. 7). Benchmark scores: Aesthetic 6.194, PickScore 23.040, ImageReward 1.118, HPS 0.289.
 
 | Property | Effect |
 |---|---|

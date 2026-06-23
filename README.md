@@ -3,7 +3,13 @@
 A survey repository tracing the development of reinforcement learning algorithms for
 multi-modal generative models — primarily text-to-image and text-to-video diffusion/flow models.
 
-**Assumed background**: readers are expected to know (1) multimodal model architecture and training basics, (2) diffusion/flow matching training (DDPM, DDIM, rectified flow), and (3) RL fundamentals including PPO and GRPO as applied in LLMs. The papers covered here address how these RL ideas are extended to continuous generative models — a non-trivial gap that each paper solves differently. New to the area? Start with the [prerequisites](papers/prerequisites/) (GRPO and flow-matching primers).
+**Background — nothing is strictly assumed.** This survey aims to be self-contained for anyone with general ML maturity. The three foundations it builds on each have a short primer in `papers/prerequisites/`:
+
+1. **Multimodal generative models** — architecture and training basics ([multimodal_basics.md](papers/prerequisites/multimodal_basics.md))
+2. **Flow matching / diffusion** — DDPM, DDIM, rectified flow ([flow_matching_basics.md](papers/prerequisites/flow_matching_basics.md))
+3. **GRPO / PPO from LLMs** — the RL machinery being transplanted ([grpo_basics.md](papers/prerequisites/grpo_basics.md))
+
+If those are already familiar, skip straight to the papers — they focus on the non-trivial gap of extending these RL ideas to continuous generative models, which each paper solves differently. If not, read the relevant primer first; each is scoped to exactly the parts this survey needs.
 
 This repository follows the **VeRL-Omni** *ubiquitous language*: algorithms are grouped by training objective into **Policy Gradient** and **Direct Preference** families (rather than the older "coupled / decoupled" SDE-vs-ODE framing), so a reader can move from "understand the algorithm" here to "run it in VeRL-Omni" directly.
 

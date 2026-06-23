@@ -30,6 +30,8 @@ DanceGRPO is **concurrent** with FlowGRPO (submitted 4 days later, May 2025) and
 
 **Why this works**: Both DDPM and rectified flow define continuous-time SDEs via the Fokker-Planck equation. For DDPM, the reverse SDE parameterised by stochasticity $\eta_t \in [0,1]$ already takes a Gaussian form. For rectified flow, adding a score-corrected noise term produces an equivalent SDE with the same Gaussian structure. Since the per-step density has the same form — $\mathcal{N}(\mu_\theta, \sigma^2 I)$ — the importance ratio formula is identical, enabling one unified training loop.
 
+**Result**: The single unified loop delivers gains across **all four backbones/modalities**, up to **+181%** over baselines: Stable Diffusion v1.4 HPS-v2.1 **0.239 → 0.365** (+53%), GenEval **0.421 → 0.522** (+24%); FLUX HPS-v2.1 **0.304 → 0.372** (+22%); HunyuanVideo (T2V) motion quality **1.37 → 3.85** (+181%), visual quality +56%; SkyReels (I2V) motion +91% (Tabs. 2–5) — DDPM and flow handled by one importance-ratio formula.
+
 ### A. DDPM reverse SDE
 
 The continuous reverse SDE with tunable stochasticity $\eta_t$:

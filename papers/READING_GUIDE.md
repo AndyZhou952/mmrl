@@ -30,6 +30,16 @@ The field split into two paradigms depending on how each work resolves this. We 
 
 ---
 
+## Step 0 — Prerequisites (skip if already fluent)
+
+Nothing here is strictly assumed. If any of the three foundations is unfamiliar, read the matching primer first — each is scoped to exactly what this survey uses:
+
+- [`prerequisites/multimodal_basics.md`](prerequisites/multimodal_basics.md) — what a text-to-image/video generator is (latent DiT, VAE, CFG, reward models).
+- [`prerequisites/flow_matching_basics.md`](prerequisites/flow_matching_basics.md) — velocity training, the deterministic ODE sampler, and **why it has no per-step density** (the gap the whole field addresses).
+- [`prerequisites/grpo_basics.md`](prerequisites/grpo_basics.md) — PPO clip, the GRPO group-relative advantage, and the LLM→diffusion vocabulary map.
+
+---
+
 ## Part I — The Policy Gradient Chain
 
 ### Step 1: FlowGRPO — the base
