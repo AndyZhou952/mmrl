@@ -9,7 +9,7 @@
 | **Venue** | — (preprint) |
 | **Authors** | Feng Wang, Zihao Yu |
 | **GitHub** | https://github.com/IamCreateAI/FlowCPS |
-| **Paradigm** | **Coupled** — plug-in replacement for the SDE step; GRPO objective unchanged |
+| **Paradigm** | **Policy Gradient** — plug-in replacement for the SDE step; GRPO objective unchanged |
 | **Cites** | FlowGRPO (2505.05470), DanceGRPO (2505.07818), DDIM (Song et al. 2020) |
 
 ---

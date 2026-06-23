@@ -9,7 +9,7 @@
 | **Venue** | — (preprint) |
 | **Authors** | Junzhe Li, Yutao Cui, Tao Huang, Yinping Ma, Chun Fan, Yiming Cheng, Miles Yang, Zhao Zhong, Liefeng Bo |
 | **GitHub** | https://github.com/Tencent-Hunyuan/MixGRPO |
-| **Paradigm** | **Coupled** — SDE + gradient confined to a sliding window; ODE everywhere else |
+| **Paradigm** | **Policy Gradient** — SDE + gradient confined to a sliding window; ODE everywhere else |
 | **Cites** | FlowGRPO (2505.05470), DanceGRPO (2505.07818), DDPO, GRPO |
 | **Cited by** | HunyuanImage 3.0 (production training pipeline) |
 
@@ -28,6 +28,8 @@ FlowGRPO and DanceGRPO established that applying GRPO to flow matching requires 
 **Idea**: Confine both SDE sampling and gradient tracking to a **contiguous sliding window** $\mathcal{W}(l) = \lbrace{}l, l{+}1, \ldots, l{+}w{-}1\rbrace$ of $w$ denoising steps. Outside the window, use a standard deterministic ODE with no gradient tracking. Slide the window through the trajectory over training iterations, so different segments accumulate gradient updates over time.
 
 **Why this works**: The GRPO importance ratio $\rho_t$ is meaningful only at SDE steps (ODE steps have $\rho_t = 1$ trivially, contributing nothing to the gradient). Confining SDE to $w$ steps reduces memory to $O(w \cdot d)$, and allows the non-window steps to use fast ODE solvers — improving trajectory quality at the tail (high detail) and head (coarse structure). Sliding the window ensures the entire trajectory is eventually covered across iterations, so the full reward landscape is optimised even though only $w$ steps are updated at each iteration.
+
+**Result**: MixGRPO achieves **nearly 50% lower training time than DanceGRPO** while *outperforming* it across multiple dimensions of human-preference alignment (abstract) — i.e. the sliding window removes most of the SDE/gradient cost without sacrificing reward.
 
 ### Three trajectory zones
 
@@ -65,7 +67,7 @@ $$\tilde{T} = 1 + (T-1)\tilde{r} \qquad \text{(effective total steps after solve
 
 $$S = T/\tilde{T} \approx 1/\tilde{r}$$
 
-The paper reports **71% training time reduction** (MixGRPO-Flash vs. FlowGRPO) with comparable reward performance.
+**Result**: MixGRPO-Flash **further reduces training time by 71%** (abstract) with almost no degradation in reward performance — the largest efficiency gain in the policy-gradient chain.
 
 ---
 
@@ -137,4 +139,4 @@ Recommended hyperparameters (ablated in paper): $w=4$, $\tau_\text{iter}=25$, $s
 | Window width $w$ is a hyperparameter | Sensitivity studied in paper; $w=4$ recommended |
 | SDE noise inside window still causes artifacts | [CPS](cps.md) can replace the SDE step inside $\mathcal{W}(l)$ |
 | Ratio imbalance within window persists | [GRPO-Guard](grpo_guard.md) is compatible |
-| Still requires SDE for any gradient | Fully solver-agnostic: see [DGPO](../decoupled/dgpo.md), [AWM](../decoupled/awm.md) |
+| Still requires SDE for any gradient | Fully solver-agnostic: see [DGPO](../direct_preference/dgpo.md), [AWM](../direct_preference/awm.md) |

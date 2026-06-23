@@ -29,35 +29,39 @@ Include a paper **only if** it satisfies all three criteria:
 
 ### Paradigm classification (most important judgment call)
 
-Every paper in the coupled or decoupled directory must be classified:
+Every paper in the policy-gradient or direct-preference directory must be classified:
 
-| Paradigm | Test question | Directory |
+| Paradigm | Test question (objective shape) | Directory |
 |---|---|---|
-| **Coupled** | Does training require computing $\log\pi_\theta(x_{t-\Delta t}|x_t)$ (per-step Gaussian likelihood) at denoising steps — i.e., does it force an SDE sampler? | `papers/coupled/` |
-| **Decoupled** | Is the training objective independent of the sampling dynamics — i.e., can any ODE/DDIM/DPM sampler be used without changing the loss? | `papers/decoupled/` |
+| **Policy Gradient** | Is the objective a PPO-clip / importance-weighted **policy gradient accumulated over multiple denoising timesteps of the same trajectory**? (This forces per-step log-probs $\log\pi_\theta(x_{t-\Delta t}\mid x_t)$ ⇒ an SDE sampler — a *consequence*, not the criterion.) | `papers/policy_gradient/` |
+| **Direct Preference** | Is the objective a **preference or MSE-style loss on final / near-final samples**, with no per-step importance ratio? (Any ODE/DDIM/DPM sampler then works unchanged.) | `papers/direct_preference/` |
+
+The criterion is the **training objective**, matching VeRL-Omni's register names in `verl_omni/trainer/diffusion/diffusion_algos.py` (`flow_grpo`, `dance_grpo`, `flow_dppo`, `grpo_guard` → policy gradient; `dpo`, `diffusion_nft` → direct preference). SDE-vs-ODE is downstream of this choice.
 
 **Decision rule in detail**:
-- If the paper derives an importance ratio $\rho_t = \pi_\theta / \pi_{\theta_\text{old}}$ at individual denoising steps → **Coupled**
-- If the paper uses only the terminal images $\lbrace{}x_0^{(i)}\rbrace$ and a forward-noising or ELBO-based loss → **Decoupled**
+- If the paper derives an importance ratio $\rho_t = \pi_\theta / \pi_{\theta_\text{old}}$ at individual denoising steps → **Policy Gradient**
+- If the paper uses only the terminal images $\lbrace{}x_0^{(i)}\rbrace$ and a forward-noising or ELBO-based loss → **Direct Preference**
 - If the paper is a pure fix/modifier (e.g., changes the objective formula but does not change the paradigm) → same directory as the base method it modifies
 
-### Dedicated file vs. `advances.md` entry
+### Dedicated file vs. `academia.md` entry
 
-| Use a dedicated file in `coupled/` or `decoupled/` when: | Add an entry to `advances.md` when: |
+| Use a dedicated file in `policy_gradient/` or `direct_preference/` when: | Add an entry to `academia.md` when: |
 |---|---|
 | The paper introduces a fundamentally new mechanism (new objective form, new SDE derivation, new paradigm insight) | The paper refines, extends, or ablates an existing mechanism without introducing a new structural approach |
 | The paper is cited by multiple other papers already in the repo | The paper is a specialisation (e.g., applies FlowGRPO to a new task without changing the algorithm) |
 | The paper is a primary citation target in industry model pipelines | The paper is mainly an empirical study with incremental results |
 
-If unsure, prefer `advances.md` first; a dedicated file can always be created later when the paper proves influential.
+If unsure, prefer `academia.md` first; a dedicated file can always be created later when the paper proves influential.
+
+**Promotion rule** (academia entry → dedicated page): promote an `academia.md` entry to its own file once **either** (a) it is cited by **≥ 2 papers already in this repo**, **or** (b) it is **adopted in a named industry pipeline** tracked in `models.md` (Tencent, Kuaishou, ByteDance, Alibaba, etc.). Until one of these holds, keep it as an overview-level entry in `academia.md`.
 
 ---
 
 ## 3. File Naming
 
 ```
-papers/coupled/<short_name>.md        e.g., flow_grpo.md, mix_grpo.md
-papers/decoupled/<short_name>.md      e.g., awm.md, dgpo.md
+papers/policy_gradient/<short_name>.md        e.g., flow_grpo.md, mix_grpo.md
+papers/direct_preference/<short_name>.md      e.g., awm.md, dgpo.md
 ```
 
 Rules for `<short_name>`:
@@ -110,7 +114,7 @@ Rules:
 | **Venue** | Conference name and year, or `— (preprint)` |
 | **Authors** | Firstname Lastname, Firstname Lastname, ... |
 | **GitHub** | full URL, or `—` if none |
-| **Paradigm** | **Coupled** or **Decoupled** — one-sentence description |
+| **Paradigm** | **Policy Gradient** or **Direct Preference** — one-sentence description |
 | **Cites** | short names of papers this one cites that are relevant here |
 | **Cited by** | short names of papers in this repo that cite this one |
 ```
@@ -127,10 +131,10 @@ Rules:
 
 **Paradigm field examples:**
 ```
-| **Paradigm** | **Coupled** — per-step Gaussian log-prob required; must use SDE sampler |
-| **Paradigm** | **Coupled** — SDE + gradient confined to a sliding window; ODE everywhere else |
-| **Paradigm** | **Decoupled** — flow matching MSE reweighted by advantage; no SDE, no importance ratio |
-| **Paradigm** | **Decoupled** — ELBO-based group preference loss over online ODE rollouts |
+| **Paradigm** | **Policy Gradient** — per-step Gaussian log-prob required; must use SDE sampler |
+| **Paradigm** | **Policy Gradient** — SDE + gradient confined to a sliding window; ODE everywhere else |
+| **Paradigm** | **Direct Preference** — flow matching MSE reweighted by advantage; no SDE, no importance ratio |
+| **Paradigm** | **Direct Preference** — ELBO-based group preference loss over online ODE rollouts |
 ```
 
 ---
@@ -168,6 +172,8 @@ These are the core of every paper file. Structure:
 
 **Why this works**: [The mathematical or structural reason. This is where you cite the theorem, duality, or property that makes the idea valid.]
 
+**Result**: [The empirical evidence this idea produces. Quantitative (benchmark delta, speedup, ablation) or qualitative/descriptive, with the paper's table/figure number where available — e.g. "+12.3 GenEval over SD3.5-M (Tab. 2)" or "removes the colour-shift artifact visible in Fig. 4".]
+
 [Mathematical derivation follows if needed — see §5.]
 ```
 
@@ -177,6 +183,7 @@ Rules:
 - **Issue** identifies the specific failure mode, not the general goal
 - **Idea** describes the mechanism, not the motivation ("convert ODE to SDE", not "to make GRPO applicable")
 - **Why this works** must state a reason — never leave it as a restatement of the idea
+- **Result** grounds the idea in evidence from the paper: cite a number or a named figure/table; if the paper reports no isolated result for this specific idea (e.g. it is only validated in aggregate), say so and point to the consolidated `## Results` section. Do not invent numbers — pull them from the paper's arXiv/HTML, project page, or repo.
 - If a problem has two sub-ideas (e.g., base variant + fast variant), use `**Idea 1 —**` and `**Idea 2 —**` sub-labels
 - One section per independently-addressed problem; a paper with three distinct fixes has three Problem sections
 - After the three bold blocks, include the mathematical derivation for the idea
@@ -266,6 +273,21 @@ Rules:
 - If the paper introduces a named variant (Fast, Flash, etc.), include it as a clearly separated block at the end of the same code block
 - The algorithm must be self-contained: someone who only reads the pseudocode should be able to implement the method
 
+#### Reference Implementation (VeRL-Omni)
+
+If the method's **loss** is registered in VeRL-Omni's [`diffusion_algos.py`](https://github.com/verl-project/verl-omni/blob/main/verl_omni/trainer/diffusion/diffusion_algos.py) (register names: `flow_grpo`, `dance_grpo`, `flow_dppo`, `grpo_guard`, `dpo`, `diffusion_nft`), add a short subsection `## Reference Implementation (VeRL-Omni)` **after** `## Algorithm` containing a **condensed** functional form of the registered loss (≈ 5–10 lines), and link the upstream file. Do **not** transcribe the full class — keep only the core math so a reader can map the page's objective onto the runnable code. Keep the rollout/sampling pseudocode in `## Algorithm` (that part is not in the registry). Example condensed form:
+
+```python
+@register_diffusion_loss("flow_grpo")   # also registered for "dance_grpo"
+def loss_flow_grpo(old_lp, lp, adv, cfg):
+    c = cfg.diffusion_loss
+    adv = clamp(adv, -c.adv_clip_max, c.adv_clip_max)
+    ratio = exp(lp - old_lp)
+    unclipped = -adv * ratio
+    clipped   = -adv * clamp(ratio, 1 - c.clip_ratio, 1 + c.clip_ratio)
+    return mean(max(unclipped, clipped))         # PPO-clip
+```
+
 ---
 
 ### 4.9 Limitations Section
@@ -322,9 +344,9 @@ Does the new symbol conflict with an existing NOTATION.md symbol?
 
 ## 6. Cross-Referencing Rules
 
-**Within papers/coupled/**: use bare filename: `[CPS](cps.md)`
+**Within papers/policy_gradient/**: use bare filename: `[CPS](cps.md)`
 
-**Across directories**: use relative path: `[DGPO](../decoupled/dgpo.md)`
+**Across directories**: use relative path: `[DGPO](../direct_preference/dgpo.md)`
 
 **External papers with no file in this repo**: use arXiv link inline — `Diffusion-DPO ([2311.12908](https://arxiv.org/abs/2311.12908))`
 
@@ -334,7 +356,7 @@ Does the new symbol conflict with an existing NOTATION.md symbol?
 
 ## 7. Files to Update After Adding a Paper
 
-When a new dedicated paper file is added to `coupled/` or `decoupled/`, update these files in order:
+When a new dedicated paper file is added to `policy_gradient/` or `direct_preference/`, update these files in order:
 
 ### 7.1 `papers/INDEX.md` — Master Table
 
@@ -349,14 +371,14 @@ Then update the **Citation Graph** section:
 - Update the blocks of papers it cites: add `→ NewPaper` to their citation edges
 - Update the paradigm lineage diagram if the paper fits into an existing branch
 
-### 7.2 `papers/advances.md` — Remove Existing Entry if Present
+### 7.2 `papers/academia.md` — Remove Existing Entry if Present
 
-If the paper was previously tracked as an advances.md entry (before it got its own file), remove that entry from advances.md. Keep the master index table entry in INDEX.md.
+If the paper was previously tracked as an academia.md entry (before it got its own file), remove that entry from academia.md. Keep the master index table entry in INDEX.md.
 
 ### 7.3 `papers/READING_GUIDE.md` — Narrative Placement
 
 If the paper is a direct successor to an existing paper (addresses a specific limitation, is explicitly positioned against a prior paper in the chain):
-- Add a step to **Part I** (coupled chain) or **Part II** (decoupled branch) with the same structure as existing steps:
+- Add a step to **Part I** (policy-gradient chain) or **Part II** (direct-preference branch) with the same structure as existing steps:
   - What the predecessor left open
   - What this paper specifically changes
   - The "keeps / changes" summary
@@ -367,7 +389,7 @@ Update the **Quick Reference table** at the bottom of READING_GUIDE.md with a ro
 
 ### 7.4 `README.md` — Directory Layout
 
-If the new file is in `papers/coupled/` or `papers/decoupled/`, add one line to the directory tree in the layout section:
+If the new file is in `papers/policy_gradient/` or `papers/direct_preference/`, add one line to the directory tree in the layout section:
 
 ```
 │   ├── new_paper.md          ← ShortName (Mon YYYY) — one-line description
@@ -381,21 +403,21 @@ Go back to any paper that cites the new one (listed in the new paper's **Cites**
 
 ---
 
-## 8. Adding an `advances.md` Entry
+## 8. Adding an `academia.md` Entry
 
-When a paper does not warrant a dedicated file, add a short entry to `advances.md`:
+When a paper does not warrant a dedicated file, add a short entry to `academia.md`:
 
 ### 8.1 Master index table row
 
-Add one row to the master index table at the top of `advances.md` (sorted by date):
+Add one row to the master index table at the top of `academia.md` (sorted by date):
 
 ```markdown
-| YYYY-MM | [NNNN.NNNNN](https://arxiv.org/abs/NNNN.NNNNN) | ShortName | Coupled/Decoupled | Key problem in 8 words |
+| YYYY-MM | [NNNN.NNNNN](https://arxiv.org/abs/NNNN.NNNNN) | ShortName | Policy Gradient/Direct Preference | Key problem in 8 words |
 ```
 
 ### 8.2 Detailed entry
 
-Add under the appropriate section heading (`## Coupled Paradigm Advances` or `## Decoupled Paradigm Advances`):
+Add under the appropriate section heading (`## Policy Gradient Paradigm Advances` or `## Direct Preference Paradigm Advances`):
 
 ```markdown
 ### ShortName — `NNNN.NNNNN` · Mon YYYY
@@ -427,7 +449,7 @@ When adding an industry model (not an academic paper) to `models.md`, different 
 Before finalising any addition, verify:
 
 - [ ] **Scope**: paper satisfies all three criteria in §1
-- [ ] **Paradigm**: coupled vs. decoupled classification is correct (check the test question in §2)
+- [ ] **Paradigm**: policy-gradient vs. direct-preference classification is correct (check the test question in §2)
 - [ ] **Notation**: every symbol in the file matches NOTATION.md; local deviations declared in header
 - [ ] **Boxed objective**: the main training loss is in `$$\boxed{...}$$`
 - [ ] **Algorithm**: pseudocode is self-contained; gradient tracking annotated; variant blocks present if applicable
@@ -456,7 +478,7 @@ Copy this skeleton and fill in each `[...]` field:
 | **Venue** | [Venue or — (preprint)] |
 | **Authors** | [Full author list] |
 | **GitHub** | [URL or —] |
-| **Paradigm** | **[Coupled/Decoupled]** — [one-clause description] |
+| **Paradigm** | **[Policy Gradient/Direct Preference]** — [one-clause description] |
 | **Cites** | [Short names of relevant cited papers] |
 | **Cited by** | [Leave — if new; fill after later papers are added] |
 
@@ -521,7 +543,7 @@ Repeat:
 ## 12. Quick Reference: Repository Layout
 
 ```
-mmrl/
+diffusion-rl-survey/
 ├── README.md
 ├── INTEGRATION_GUIDE.md     ← this file
 ├── models.md
@@ -529,9 +551,10 @@ mmrl/
     ├── INDEX.md             ← update for every new paper
     ├── NOTATION.md          ← update when adding new shared symbols
     ├── READING_GUIDE.md     ← update narrative when a new key paper is added
-    ├── advances.md          ← short entries for papers without dedicated files
-    ├── coupled/             ← papers where SDE is required for training
+    ├── academia.md          ← short entries for papers without dedicated files
+    ├── prerequisites/       ← GRPO + flow-matching primers
+    ├── policy_gradient/     ← objective = PPO-clip policy gradient over the trajectory
     │   └── *.md
-    └── decoupled/           ← papers where any ODE sampler works for training
+    └── direct_preference/   ← objective = preference / MSE loss on final samples
         └── *.md
 ```

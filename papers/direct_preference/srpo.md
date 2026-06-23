@@ -10,7 +10,7 @@
 | **Authors** | Xiangwei Shen, Zhimin Li, Zhantao Yang, Shiyi Zhang, Yingfang Zhang, Donghao Li, Chunyu Wang, Qinglin Lu, Yansong Tang |
 | **Affiliation** | Tencent Hunyuan; CUHK-Shenzhen; Tsinghua University |
 | **GitHub** | https://github.com/Tencent-Hunyuan/SRPO |
-| **Paradigm** | **Decoupled** — no SDE, no multi-step denoising gradients; single-step closed-form recovery |
+| **Paradigm** | **Direct Preference** — no SDE, no multi-step denoising gradients; single-step closed-form recovery |
 | **Cites** | DDPO, FlowGRPO, DanceGRPO, ReFL, DRaFT |
 | **Cited by** | HunyuanImage 3.0 pipeline (MixGRPO → SRPO → ReDA stages) |
 
@@ -18,7 +18,7 @@
 
 ## Context
 
-SRPO introduces two independent innovations that can be used separately or together: (1) **Direct-Align**, a training procedure that aligns the model to a reward using a closed-form noise-recovery step instead of multi-step rollouts; and (2) the **SRPO Reward**, a self-normalising relative score that does not require periodic re-training of the reward model. Both target FLUX.1-dev (flow matching), and both are entirely decoupled — no SDE sampler, no GRPO importance ratio, no KL divergence against a frozen reference.
+SRPO introduces two independent innovations that can be used separately or together: (1) **Direct-Align**, a training procedure that aligns the model to a reward using a closed-form noise-recovery step instead of multi-step rollouts; and (2) the **SRPO Reward**, a self-normalising relative score that does not require periodic re-training of the reward model. Both target FLUX.1-dev (flow matching), and both are entirely direct-preference — no SDE sampler, no GRPO importance ratio, no KL divergence against a frozen reference.
 
 ---
 

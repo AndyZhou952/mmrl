@@ -8,7 +8,7 @@ This guide is for readers who want to understand not just what each algorithm do
 
 All algorithms in this repository share the same top-level goal: **use a reward signal to make a generative model produce better images or videos**. The central difficulty is that generative models (flow matching, diffusion) are not naturally policy-learnable — they do not define a stochastic policy with a tractable density, which is what RL algorithms require.
 
-The field split into two paradigms depending on how each work resolves this:
+The field split into two paradigms depending on how each work resolves this. We name them by **training objective** (following VeRL-Omni): the **Policy Gradient** family keeps a PPO-clip policy gradient over the trajectory (and therefore needs an SDE), while the **Direct Preference** family uses a preference/MSE loss on final samples (and therefore needs no SDE). Within Direct Preference there is a further split worth keeping in mind: **preference-based** methods (Diffusion-DPO, DGPO) rank samples against each other, whereas **reward-based** methods (SRPO, AWM) align directly to a reward/target without explicit pairs.
 
 ```
                       FlowGRPO (May 2025)
@@ -16,7 +16,7 @@ The field split into two paradigms depending on how each work resolves this:
                             │
               ┌─────────────┼──────────────┐
               │             │              │
-     COUPLED CHAIN    DanceGRPO      DECOUPLED BRANCH
+     POLICY GRADIENT    DanceGRPO      DIRECT PREFERENCE
    (fix FlowGRPO's    (concurrent;   (abandon SDE entirely)
     own problems)      broader)
               │
@@ -30,11 +30,11 @@ The field split into two paradigms depending on how each work resolves this:
 
 ---
 
-## Part I — The Coupled Chain
+## Part I — The Policy Gradient Chain
 
 ### Step 1: FlowGRPO — the base
 
-**Read first.** [`coupled/flow_grpo.md`](coupled/flow_grpo.md)
+**Read first.** [`policy_gradient/flow_grpo.md`](policy_gradient/flow_grpo.md)
 
 FlowGRPO is the pivot point for the entire field. Before it, GRPO (from DeepSeek-R1, January 2025) had only been applied to text. Applying it to flow matching models (SD3, FLUX) requires solving one structural problem: flow matching uses a **deterministic ODE**, which has no density — so the importance ratio $\rho_t = \pi_\theta / \pi_{\theta_\text{old}}$ that GRPO depends on is undefined.
 
@@ -52,7 +52,7 @@ After reading this, you understand the complete baseline:
 
 ### Step 2: MixGRPO — fixing the sampling trajectory
 
-**Read second.** [`coupled/mix_grpo.md`](coupled/mix_grpo.md)
+**Read second.** [`policy_gradient/mix_grpo.md`](policy_gradient/mix_grpo.md)
 
 The first efficiency problem with FlowGRPO: the SDE runs through **all $T$ denoising steps**, requiring gradient storage for all of them ($O(T \cdot d)$ memory). Additionally, SDE is a first-order sampler — it cannot use high-quality ODE solvers (DPM-Solver++) for the steps outside the gradient window.
 
@@ -73,7 +73,7 @@ The window slides through the trajectory over training, so all timesteps accumul
 
 ### Step 3: GRPO-Guard — fixing the systematic bias
 
-**Read third.** [`coupled/grpo_guard.md`](coupled/grpo_guard.md)
+**Read third.** [`policy_gradient/grpo_guard.md`](policy_gradient/grpo_guard.md)
 
 After solving efficiency, the next problem is **training stability**. Empirical analysis of FlowGRPO reveals two statistical pathologies in the importance ratio:
 
@@ -81,7 +81,7 @@ After solving efficiency, the next problem is **training stability**. Empirical 
 
 2. **~20× variance across timesteps**: late denoising steps (small $\sigma_t$) produce much larger log-ratios than early steps, causing the gradient to be dominated by fine-detail timesteps and under-optimise coarse structure.
 
-GRPO-Guard's two fixes are composable and add only a few lines of code on top of any coupled method:
+GRPO-Guard's two fixes are composable and add only a few lines of code on top of any policy-gradient method:
 - **RatioNorm**: standardise $\log\rho_t^{(i)}$ within the group at each $t$, restoring zero mean and unit variance → clip engages as designed.
 - **Gradient reweighting**: multiply each timestep's loss by $\delta_t = 1/\Delta t$, equalising gradient magnitudes across timesteps.
 
@@ -91,7 +91,7 @@ GRPO-Guard's two fixes are composable and add only a few lines of code on top of
 
 ### Step 4: DanceGRPO — concurrent generalisation
 
-**Read alongside or after Steps 1–3.** [`coupled/dance_grpo.md`](coupled/dance_grpo.md)
+**Read alongside or after Steps 1–3.** [`policy_gradient/dance_grpo.md`](policy_gradient/dance_grpo.md)
 
 DanceGRPO is concurrent with FlowGRPO (submitted 4 days later, independently). It arrives at the same ODE→SDE conversion, but from a different starting point: the authors wanted a **single unified GRPO implementation** that works across all backbone types (DDPM-style and flow matching) and all modalities (T2I, T2V, I2V).
 
@@ -105,17 +105,17 @@ DanceGRPO also introduces timestep **subsampling** (random $\tau$-fraction of st
 
 ### Step 5: CPS — fixing the sample quality
 
-**Read last in the coupled chain.** [`coupled/cps.md`](coupled/cps.md)
+**Read last in the policy-gradient chain.** [`policy_gradient/cps.md`](policy_gradient/cps.md)
 
 Even with MixGRPO's efficiency and GRPO-Guard's stability, there is a quieter problem: the SDE-generated $x_0$ samples used to compute rewards are **slightly off the flow manifold**. FlowGRPO's SDE adds noise $s_t\sqrt{\Delta t}\epsilon_t$ on top of the Euler step, producing a total noise level at $t-\Delta t$ that exceeds $(t-\Delta t)$ — the level the rectified flow schedule specifies. Over many steps, this accumulation makes the image slightly noisier than a clean image should be. Reward models trained on clean images give unreliable scores for these off-manifold samples.
 
 CPS fixes this with a **coefficients-preserving step**: decompose $x_{t-\Delta t}$ into clean-image, noise-direction, and fresh-noise components, and set the coefficients so the total noise level is exactly $t-\Delta t$. This is the flow-matching analogue of stochastic DDIM.
 
-**Relationship to all coupled methods**: CPS is a **drop-in replacement** for the SDE sampling step. The GRPO objective, advantage computation, and update rule are completely unchanged. It can be combined with MixGRPO (apply CPS inside the window) and GRPO-Guard (apply Guard to the objective). CPS does not improve speed or ratio stability — it specifically fixes image quality degradation caused by off-manifold samples.
+**Relationship to all policy-gradient methods**: CPS is a **drop-in replacement** for the SDE sampling step. The GRPO objective, advantage computation, and update rule are completely unchanged. It can be combined with MixGRPO (apply CPS inside the window) and GRPO-Guard (apply Guard to the objective). CPS does not improve speed or ratio stability — it specifically fixes image quality degradation caused by off-manifold samples.
 
 ---
 
-### Coupled Chain Summary
+### Policy Gradient Chain Summary
 
 The five papers above form a complete, self-contained development arc. Each one takes the previous result and adds exactly one targeted fix:
 
@@ -143,19 +143,19 @@ FlowGRPO
 
 ---
 
-## Part II — The Decoupled Branch
+## Part II — The Direct Preference Branch
 
-The coupled chain improvements all start from the same premise: **GRPO requires a stochastic policy, so we must convert the ODE to an SDE**. The decoupled branch asks: what if we do not accept that premise?
+The policy-gradient chain improvements all start from the same premise: **GRPO requires a stochastic policy, so we must convert the ODE to an SDE**. The direct-preference branch asks: what if we do not accept that premise?
 
-All decoupled methods can use any ODE sampler (DDIM, DPM-Solver++) for generating training images. They replace the importance ratio with an alternative signal that does not require per-step densities.
+All direct-preference methods can use any ODE sampler (DDIM, DPM-Solver++) for generating training images. They replace the importance ratio with an alternative signal that does not require per-step densities.
 
-**When to read this branch**: after reading FlowGRPO (Step 1 above), you can jump directly here. The decoupled papers explicitly position themselves against the SDE requirement; knowing FlowGRPO is enough to understand the motivation.
+**When to read this branch**: after reading FlowGRPO (Step 1 above), you can jump directly here. The direct-preference papers explicitly position themselves against the SDE requirement; knowing FlowGRPO is enough to understand the motivation.
 
 ---
 
 ### AWM — the simplest conceptual break
 
-**Read first in the decoupled branch.** [`decoupled/awm.md`](decoupled/awm.md)
+**Read first in the direct-preference branch.** [`direct_preference/awm.md`](direct_preference/awm.md)
 
 AWM starts from a theoretical diagnosis: DDPO's policy gradient is mathematically equivalent to doing flow matching with a **noisy target** — the stochastic denoised sample $x_{t-1}$ rather than the clean image $x_0$. This noisy target inflates gradient variance and diverges from pretraining.
 
@@ -169,7 +169,7 @@ This is the LLM pretraining-to-PPO analogy made exact for diffusion: in LLMs, PP
 
 ### DiffusionNFT — the forward-process approach
 
-**Read second in the decoupled branch.** [`decoupled/diffusion_nft.md`](decoupled/diffusion_nft.md)
+**Read second in the direct-preference branch.** [`direct_preference/diffusion_nft.md`](direct_preference/diffusion_nft.md)
 
 DiffusionNFT takes a different structural departure: instead of replacing the training target (like AWM), it moves the entire RL signal into the **forward (noising) direction**. Images are still generated by an ODE sampler, but the gradient flows through the standard flow matching objective applied to the forward process — not through any denoising steps.
 
@@ -181,7 +181,7 @@ The mechanism uses two implicit velocity fields — a "positive" version that mo
 
 ### DGPO — ELBO-based group preference
 
-**Read third in the decoupled branch.** [`decoupled/dgpo.md`](decoupled/dgpo.md)
+**Read third in the direct-preference branch.** [`direct_preference/dgpo.md`](direct_preference/dgpo.md)
 
 DGPO extends Diffusion-DPO from binary offline preference pairs to **online group-level ranking**. It keeps the GRPO group generation (generate $N$ images per prompt, compute group advantage) but replaces the importance ratio with the diffusion ELBO:
 
@@ -195,19 +195,19 @@ Forward-noised versions of the generated images are constructed independently (n
 
 ### SRPO — practical efficiency via direct alignment
 
-**Read last, or independently.** [`decoupled/srpo.md`](decoupled/srpo.md)
+**Read last, or independently.** [`direct_preference/srpo.md`](direct_preference/srpo.md)
 
-SRPO is the most practically efficient of the decoupled methods. It introduces two independent ideas, each addressing a different bottleneck:
+SRPO is the most practically efficient of the direct-preference methods. It introduces two independent ideas, each addressing a different bottleneck:
 
 1. **Direct-Align**: The forward process $x_t = (1-t)x_0 + t\epsilon_\text{gt}$ with a *fixed* known noise $\epsilon_\text{gt}$ allows closed-form recovery of $\hat{x}_0$ in a single step — no rollout, no multi-step denoising in the gradient path. One network call per timestep, all noise levels covered.
 
 2. **SRPO Reward**: Rather than training a reward model, compute a relative score between a positive text condition ("photo-realistic image") and a negative one ("AI-generated image") applied to the same generated image. This score is self-normalising — no reward model re-training as the policy shifts.
 
-SRPO is used as stage 4 of the HunyuanImage 3.0 training pipeline (after MixGRPO and before ReDA), demonstrating that the two ideas are complementary to the coupled chain rather than competing.
+SRPO is used as stage 4 of the HunyuanImage 3.0 training pipeline (after MixGRPO and before ReDA), demonstrating that the two ideas are complementary to the policy-gradient chain rather than competing.
 
 ---
 
-### Decoupled Branch Summary
+### Direct Preference Branch Summary
 
 ```
 FlowGRPO
@@ -240,15 +240,15 @@ FlowGRPO
 
 ### UniGRPO — text + image joint optimisation (2026)
 
-[`coupled/uni_grpo.md`](coupled/uni_grpo.md)
+[`policy_gradient/uni_grpo.md`](policy_gradient/uni_grpo.md)
 
-**Read after** the full coupled chain and at least one decoupled method. UniGRPO targets **unified multimodal models** — transformers that generate both text reasoning chains and images in a single forward pass. It takes the FlowGRPO SDE approach (with a sliding window, following MixGRPO), applies RatioNorm from GRPO-Guard, removes CFG from training, and adds a velocity-space MSE regulariser. The key novelty is treating text and image generation as a single MDP with a shared terminal reward, so a better reasoning chain and a better image are jointly optimised.
+**Read after** the full policy-gradient chain and at least one direct-preference method. UniGRPO targets **unified multimodal models** — transformers that generate both text reasoning chains and images in a single forward pass. It takes the FlowGRPO SDE approach (with a sliding window, following MixGRPO), applies RatioNorm from GRPO-Guard, removes CFG from training, and adds a velocity-space MSE regulariser. The key novelty is treating text and image generation as a single MDP with a shared terminal reward, so a better reasoning chain and a better image are jointly optimised.
 
-### advances.md — the 2025–2026 long tail
+### academia.md — the 2025–2026 long tail
 
-[`advances.md`](advances.md)
+[`academia.md`](academia.md)
 
-After reading the core papers, `advances.md` tracks 20+ papers from late 2025 and 2026. Each entry follows the same problem/idea format but is shorter (overview-level). The coupled advances (BranchGRPO, TreeGRPO, DenseGRPO, Pro-GRPO, DRIFT) mostly address variants of the efficiency and credit-assignment problems; the decoupled advances (DAV, SQDF, VMPO, TDM-R1) explore richer theoretical frameworks.
+After reading the core papers, `academia.md` tracks 20+ papers from late 2025 and 2026. Each entry follows the same problem/idea format but is shorter (overview-level). The policy-gradient advances (BranchGRPO, TreeGRPO, DenseGRPO, Pro-GRPO, DRIFT) mostly address variants of the efficiency and credit-assignment problems; the direct-preference advances (DAV, SQDF, VMPO, TDM-R1) explore richer theoretical frameworks.
 
 ---
 
@@ -262,26 +262,26 @@ flow_grpo → mix_grpo → grpo_guard → cps
 
 Then optionally add DanceGRPO for the multi-backbone perspective.
 
-### Path B — Decoupled branch (3 papers, ~1.5 hours)
+### Path B — Direct Preference branch (3 papers, ~1.5 hours)
 
 ```
 flow_grpo (motivation only) → awm → dgpo → srpo
 ```
 
-Read FlowGRPO to understand *why* the SDE is needed; then read the decoupled papers as alternatives that avoid it.
+Read FlowGRPO to understand *why* the SDE is needed; then read the direct-preference papers as alternatives that avoid it.
 
 ### Path C — Full survey
 
 ```
 flow_grpo
     │
-    ├── mix_grpo → grpo_guard → cps      (coupled improvements)
+    ├── mix_grpo → grpo_guard → cps      (policy-gradient improvements)
     ├── dance_grpo                        (concurrent breadth)
     │
-    ├── awm → diffusion_nft → dgpo       (decoupled branch)
+    ├── awm → diffusion_nft → dgpo       (direct-preference branch)
     ├── srpo                             (practical fine-tuning)
     │
-    └── uni_grpo → advances.md           (2026 and beyond)
+    └── uni_grpo → academia.md           (2026 and beyond)
 ```
 
 ---

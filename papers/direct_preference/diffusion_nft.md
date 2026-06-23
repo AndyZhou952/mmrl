@@ -9,20 +9,20 @@
 | **Venue** | — (preprint) |
 | **Authors** | (see paper) |
 | **GitHub** | — |
-| **Paradigm** | **Decoupled** — forward-process matching loss; no SDE, no importance ratio, any ODE sampler |
+| **Paradigm** | **Direct Preference** — forward-process matching loss; no SDE, no importance ratio, any ODE sampler |
 | **Cites** | FlowGRPO (2505.05470), DanceGRPO (2505.07818), DDPO, flow matching |
 
 ---
 
 ## Context
 
-DiffusionNFT takes the most radical departure from the coupled paradigm: instead of modifying the *reverse* (denoising) process to enable policy gradients, it moves the training signal entirely into the *forward* (noising) direction. The reward still comes from generated images (via an ODE sampler), but the gradient flows through the pretraining flow matching loss — not through denoising steps. This makes the approach compatible with any ODE sampler and CFG.
+DiffusionNFT takes the most radical departure from the policy-gradient paradigm: instead of modifying the *reverse* (denoising) process to enable policy gradients, it moves the training signal entirely into the *forward* (noising) direction. The reward still comes from generated images (via an ODE sampler), but the gradient flows through the pretraining flow matching loss — not through denoising steps. This makes the approach compatible with any ODE sampler and CFG.
 
 ---
 
 ## Problem — Reverse-process RL forces SDE sampling, conflicts with CFG, and diverges from pretraining
 
-**Issue**: Coupled methods (FlowGRPO, DanceGRPO) treat RL as a reverse-process MDP: the policy is the denoising chain $x_T \to \cdots \to x_0$, and gradients flow through reverse steps via importance ratios. Three structural problems arise:
+**Issue**: Policy Gradient methods (FlowGRPO, DanceGRPO) treat RL as a reverse-process MDP: the policy is the denoising chain $x_T \to \cdots \to x_0$, and gradients flow through reverse steps via importance ratios. Three structural problems arise:
 
 1. **Solver lock-in**: The importance ratio $\rho_t = \pi_\theta / \pi_{\theta_\text{old}}$ requires a *stochastic* policy — it forces SDE sampling and blocks the fast ODE solvers used in production.
 2. **CFG conflict**: Classifier-free guidance applies to the reverse process in a way that is incompatible with the per-step likelihood used in GRPO (CFG modifies the effective policy non-trivially, invalidating the density computation).
@@ -103,6 +103,22 @@ Repeat (iteration i):
        L = mean_k [ R^(k)·‖v^+ - u_t^(k)‖² + (1-R^(k))·‖v^- - u_t^(k)‖² ]
   5. θ ← θ - η ∇_θ L
   6. EMA: θ_old ← η_i·θ_old + (1-η_i)·θ
+```
+
+---
+
+## Reference Implementation (VeRL-Omni)
+
+Condensed from [`diffusion_algos.py`](https://github.com/verl-project/verl-omni/blob/main/verl_omni/trainer/diffusion/diffusion_algos.py) (`@register_diffusion_loss("diffusion_nft")`). `DiffusionNFTLoss` builds the implicit negative prediction from the current and old (EMA) predictions, weights the positive/negative clean-target MSE by the reward probability, and adds a KL term against the reference prediction:
+
+```python
+@register_diffusion_loss("diffusion_nft")
+def loss_diffusion_nft(forward, old, ref_forward, x0, reward_prob, beta, cfg):
+    neg = (1.0 + beta) * old - beta * forward            # implicit negative policy
+    pos_mse = reward_prob       * mse(forward, x0)       # high-reward → positive field
+    neg_mse = (1 - reward_prob) * mse(neg,     x0)       # low-reward  → negative field
+    kl = mse(forward, ref_forward)                       # KL reg to reference
+    return mean(pos_mse + neg_mse) + cfg.diffusion_loss.beta_kl * mean(kl)
 ```
 
 ---

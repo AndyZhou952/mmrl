@@ -8,14 +8,14 @@
 | **Submitted** | 2025-10-25 (revised 2025-10-30) |
 | **Venue** | — (preprint) |
 | **Authors** | Jing Wang, Jiajun Liang, Jie Liu, Henglin Liu, Gongye Liu, Jun Zheng, Wanyuan Pang, Ao Ma, Zhenyu Xie, Xintao Wang, Meng Wang, Pengfei Wan, Xiaodan Liang |
-| **Paradigm** | **Coupled** — modifier applied inside the GRPO objective; no change to sampling |
+| **Paradigm** | **Policy Gradient** — modifier applied inside the GRPO objective; no change to sampling |
 | **Cites** | FlowGRPO (2505.05470), DanceGRPO (2505.07818), PPO, GRPO (DeepSeek-R1) |
 
 ---
 
 ## Context
 
-GRPO-Guard is a **modifier** applied to the training objective of any coupled GRPO method (FlowGRPO, DanceGRPO, MixGRPO). It changes nothing about how images are sampled; it only changes how the importance ratio is computed and weighted inside the loss. The core issue it addresses is that PPO's clip mechanism — designed around the assumption $\mathbb{E}[\rho_t] \approx 1$ — breaks down in flow-matching GRPO, causing reward hacking. This file builds on the GRPO objective from [flow_grpo.md](flow_grpo.md).
+GRPO-Guard is a **modifier** applied to the training objective of any policy-gradient GRPO method (FlowGRPO, DanceGRPO, MixGRPO). It changes nothing about how images are sampled; it only changes how the importance ratio is computed and weighted inside the loss. The core issue it addresses is that PPO's clip mechanism — designed around the assumption $\mathbb{E}[\rho_t] \approx 1$ — breaks down in flow-matching GRPO, causing reward hacking. This file builds on the GRPO objective from [flow_grpo.md](flow_grpo.md).
 
 ---
 
@@ -92,6 +92,24 @@ All sampling steps and advantage computation unchanged.
 
 ---
 
+## Reference Implementation (VeRL-Omni)
+
+Condensed from [`diffusion_algos.py`](https://github.com/verl-project/verl-omni/blob/main/verl_omni/trainer/diffusion/diffusion_algos.py) (`@register_diffusion_loss("grpo_guard")`). `GRPOGuardLoss` takes the reverse-SDE means (`prev_sample_mean`, `old_prev_sample_mean`), forms a mean-drift bias scaled by the diffusion coefficient (RatioNorm), applies PPO-clip, and divides by `sqrt_dt**2` (= $\Delta t$) for timestep-invariant gradient scaling ($\delta_t = 1/\Delta t$):
+
+```python
+@register_diffusion_loss("grpo_guard")
+def loss_grpo_guard(old_lp, lp, mean_θ, mean_old, std_t, sqrt_dt, adv, cfg):
+    c = cfg.diffusion_loss
+    adv = clamp(adv, -c.adv_clip_max, c.adv_clip_max)
+    bias  = ((mean_θ - mean_old) ** 2).sum(-1) / (2 * std_t ** 2)   # RatioNorm mean-drift
+    ratio = exp((lp - old_lp) + bias)
+    unclipped = -adv * ratio
+    clipped   = -adv * clamp(ratio, 1 - c.clip_ratio, 1 + c.clip_ratio)
+    return mean(max(unclipped, clipped)) / sqrt_dt ** 2            # δ_t = 1/Δt reweighting
+```
+
+---
+
 ## Effect on Training Stability
 
 | Metric | FlowGRPO baseline | With GRPO-Guard |
@@ -105,7 +123,7 @@ All sampling steps and advantage computation unchanged.
 
 ## Compatibility
 
-GRPO-Guard is a pure objective modifier — it is composable with all coupled methods:
+GRPO-Guard is a pure objective modifier — it is composable with all policy-gradient methods:
 - FlowGRPO + Guard ✓
 - DanceGRPO + Guard ✓
 - MixGRPO + Guard ✓ (apply RatioNorm and $\delta_t$ to window steps only)

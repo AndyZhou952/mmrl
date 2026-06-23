@@ -9,7 +9,7 @@
 | **Venue** | — (preprint) |
 | **Authors** | Jie Liu, Zilyu Ye, Linxiao Yuan, Shenhan Zhu, Yu Gao, Jie Wu, Kunchang Li, Xionghui Wang, Xiaonan Nie, Weilin Huang, Wanli Ouyang |
 | **GitHub** | — |
-| **Paradigm** | **Coupled** — SDE-based sampling within window for image policy; autoregressive GRPO for text |
+| **Paradigm** | **Policy Gradient** — SDE-based sampling within window for image policy; autoregressive GRPO for text |
 | **Cites** | FlowGRPO (2505.05470), GRPO-Guard (2510.22319), CPS (2509.05952), AWM (2509.25050) |
 
 ---

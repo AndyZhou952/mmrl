@@ -9,7 +9,7 @@
 | **Venue** | NeurIPS 2025 |
 | **Authors** | Jie Liu, Gongye Liu, Jiajun Liang, Yangguang Li, Jiaheng Liu, Xintao Wang, Pengfei Wan, Di Zhang, Wanli Ouyang |
 | **GitHub** | https://github.com/yifan123/flow_grpo |
-| **Paradigm** | **Coupled** — per-step Gaussian log-prob required; must use SDE sampler |
+| **Paradigm** | **Policy Gradient** — per-step Gaussian log-prob required; must use SDE sampler |
 | **Cites** | DDPO, GRPO (DeepSeek-R1), PPO, flow matching (Lipman et al.), SD3.5-M, FLUX |
 | **Cited by** | MixGRPO, CPS, DiffusionNFT, AWM, GRPO-Guard, DGPO |
 
@@ -63,6 +63,8 @@ $$dx_t = \left[v_\theta(x_t, t, c) + \frac{s_t^2}{2}\nabla_{x_t}\log p_t(x_t)\ri
 
 for any diffusion coefficient $s_t > 0$. The extra drift term $\frac{s_t^2}{2}\nabla \log p_t$ compensates the injected noise, so the marginal $p_t(x_t)$ is identical to the ODE's. FlowGRPO uses this as an engineering device: inject a small, controlled amount of stochasticity during training — enough to define a Gaussian density at each step — while keeping the model's learned distribution intact.
 
+**Result**: Enabling GRPO on flow matching is what unlocks the paper's headline gains on SD3.5-M — GenEval compositional accuracy **63% → 95%** and visual-text-rendering (OCR) accuracy **59% → 92%** (abstract) — with the authors reporting "very little reward hacking."
+
 ### Approximating the score
 
 The score $\nabla_{x_t}\log p_t(x_t)$ is unknown, but can be approximated without any extra network via **Tweedie's formula**:
@@ -105,6 +107,8 @@ $$\hat{A}^{(i)} = \frac{r^{(i)} - \overline{r}}{\mathrm{std}(\lbrace{}r^{(j)}\rb
 
 **Why this works**: The group mean acts as a prompt-specific baseline, removing variance due to prompt difficulty. Standard-deviation normalisation makes gradients scale-invariant across reward models and prompt batches — the same technique that made GRPO effective in LLM reasoning, transplanted to visual generation. This replaces the raw reward $r^{(i)}$ used in predecessor work (DDPO).
 
+**Result**: Not isolated by an ablation number in the paper; the group baseline is what makes training stable enough to reach the Problem 1 headline gains without the reward collapse seen in raw-reward REINFORCE — see the consolidated abstract results above.
+
 ---
 
 ## Problem 3 — Full $T$-step gradient computation is expensive
@@ -118,6 +122,8 @@ $$\hat{A}^{(i)} = \frac{r^{(i)} - \overline{r}}{\mathrm{std}(\lbrace{}r^{(j)}\rb
 $$x_1 \xrightarrow[\text{no grad}]{\text{ODE}} x_{t^{\ast}} \xrightarrow[\times N_g]{\text{1-step SDE}} \lbrace{}x_{t^{\ast}-\Delta t}^{(i)}\rbrace \xrightarrow[\text{no grad}]{\text{ODE}} \lbrace{}x_0^{(i)}\rbrace$$
 
 **Why Fast works**: The reward is evaluated at $x_0$, not at $t^{\ast}$. The single SDE branch injects enough diversity — through independent noise — for the group advantage $\hat{A}^{(i)}$ to provide a useful gradient signal. Only 1–2 gradient-tracked steps are needed per trajectory, reducing memory cost by $\sim T_\text{train}$× compared to a full rollout.
+
+**Result**: Denoising reduction ($T_\text{inf}{=}40 \to T_\text{train}{=}10$) preserves the same reward signal at ~¼ the memory, and the Fast single-branch variant cuts gradient-tracked steps to 1–2 per trajectory while reaching the gains above; the paper reports the speed/quality trade-off descriptively rather than as a single headline multiplier.
 
 ---
 
@@ -166,12 +172,29 @@ FlowGRPO-Fast variant (replaces steps 2–3):
 
 ---
 
+## Reference Implementation (VeRL-Omni)
+
+Condensed from [`diffusion_algos.py`](https://github.com/verl-project/verl-omni/blob/main/verl_omni/trainer/diffusion/diffusion_algos.py) (`@register_diffusion_loss("flow_grpo")`, shared by `"dance_grpo"`). The full `FlowGRPOLoss.compute_loss` reduces to the PPO-clip objective on the per-step log-prob ratio (advantages clamped, optional rollout-correction weights omitted here):
+
+```python
+@register_diffusion_loss("flow_grpo")   # also registered for "dance_grpo"
+def loss_flow_grpo(old_lp, lp, adv, cfg):
+    c = cfg.diffusion_loss
+    adv = clamp(adv, -c.adv_clip_max, c.adv_clip_max)
+    ratio = exp(lp - old_lp)                                  # ρ_t = π_θ / π_θ_old
+    unclipped = -adv * ratio
+    clipped   = -adv * clamp(ratio, 1 - c.clip_ratio, 1 + c.clip_ratio)
+    return mean(max(unclipped, clipped))                      # PPO-clip
+```
+
+---
+
 ## Limitations
 
 | Problem | Addressed by |
 |---|---|
 | SDE noise → image artifacts → misleads reward model | [CPS](cps.md) |
 | Importance ratio $\rho_t$ mean $<1$, varying variance → reward hacking | [GRPO-Guard](grpo_guard.md) |
-| SDE sampler blocks fast ODE; still expensive | [MixGRPO](mix_grpo.md), [AWM](../decoupled/awm.md) |
-| Pretraining objective $\neq$ GRPO objective | [AWM](../decoupled/awm.md) |
-| Requires SDE → incompatible with ODE-only samplers | [DGPO](../decoupled/dgpo.md) |
+| SDE sampler blocks fast ODE; still expensive | [MixGRPO](mix_grpo.md), [AWM](../direct_preference/awm.md) |
+| Pretraining objective $\neq$ GRPO objective | [AWM](../direct_preference/awm.md) |
+| Requires SDE → incompatible with ODE-only samplers | [DGPO](../direct_preference/dgpo.md) |

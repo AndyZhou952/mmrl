@@ -10,32 +10,32 @@
 
 | Date | arXiv | Paper | Paradigm | Key Problem |
 |---|---|---|---|---|
-| 2025-09 | [2509.06040](https://arxiv.org/abs/2509.06040) | BranchGRPO | Coupled | Inefficient sequential rollouts; sparse credit assignment |
-| 2025-10 | [2510.00502](https://arxiv.org/abs/2510.00502) | DAV | Decoupled | Mode collapse under standard KL-RL; no EM framework |
-| 2025-10 | [2510.02692](https://arxiv.org/abs/2510.02692) | P-GRAFT | Decoupled | RAFT methods lack unified theory; terminal-only shaping suboptimal |
-| 2025-10 | [2510.18072](https://arxiv.org/abs/2510.18072) | AC-Flow | Decoupled | No actor-critic framework for continuous-time flow matching |
-| 2025-11 | [2511.19356](https://arxiv.org/abs/2511.19356) | TaRoS | Coupled | Goodhart's Law / reward saturation in video GRPO |
-| 2025-12 | [2512.04332](https://arxiv.org/abs/2512.04332) | DDRL | Decoupled | On-policy KL regularisation causes reward hacking at scale |
-| 2025-12 | [2512.04559](https://arxiv.org/abs/2512.04559) | SQDF | Decoupled | No principled Q-function for diffusion denoising chain |
-| 2025-12 | [2512.08153](https://arxiv.org/abs/2512.08153) | TreeGRPO | Coupled | Trajectory-level uniform advantages; high sampling cost |
-| 2025-12 | [2512.15347](https://arxiv.org/abs/2512.15347) | Pro-GRPO | Coupled | Large groups costly; reward-clustered samples give no signal |
-| 2025-12 | [2512.17951](https://arxiv.org/abs/2512.17951) | SuperFlow | Coupled | Fixed group size ignores per-prompt variance; coarse step advantages |
-| 2025-12 | [2512.21514](https://arxiv.org/abs/2512.21514) | DiverseGRPO | Coupled | GRPO collapses toward few high-reward modes |
-| 2025-12 | [2512.24138](https://arxiv.org/abs/2512.24138) | GARDO | Decoupled | KL regularisation impedes exploration; no uncertainty-aware gating |
-| 2026-01 | [2601.00423](https://arxiv.org/abs/2601.00423) | E-GRPO | Coupled | Low-entropy SDE steps waste compute; exploration budget uniform |
-| 2026-01 | [2601.04153](https://arxiv.org/abs/2601.04153) | Diffusion-DRF | Decoupled | Non-differentiable rewards block VLM-based feedback |
-| 2026-01 | [2601.05729](https://arxiv.org/abs/2601.05729) | TAGRPO | Coupled | Standard GRPO fails on I2V; needs relational trajectory alignment |
-| 2026-01 | [2601.12401](https://arxiv.org/abs/2601.12401) | DRIFT | Coupled | RL fine-tuning provably converges to Dirac delta (mode collapse) |
-| 2026-01 | [2601.20218](https://arxiv.org/abs/2601.20218) | DenseGRPO | Coupled | Terminal reward applied uniformly to all steps — sparse signal |
-| 2026-02 | [2602.12229](https://arxiv.org/abs/2602.12229) | VMPO | Decoupled | SMC/variance perspective on diffusion alignment unexplored |
-| 2026-03 | [2603.07700](https://arxiv.org/abs/2603.07700) | TDM-R1 | Decoupled | RL for few-step (2–4 step) diffusion with non-differentiable rewards |
-| 2026-03 | [2603.21872](https://arxiv.org/abs/2603.21872) | SAGE-GRPO | Coupled | SDE noise in video generation degrades rollout quality off-manifold |
+| 2025-09 | [2509.06040](https://arxiv.org/abs/2509.06040) | BranchGRPO | Policy Gradient | Inefficient sequential rollouts; sparse credit assignment |
+| 2025-10 | [2510.00502](https://arxiv.org/abs/2510.00502) | DAV | Direct Preference | Mode collapse under standard KL-RL; no EM framework |
+| 2025-10 | [2510.02692](https://arxiv.org/abs/2510.02692) | P-GRAFT | Direct Preference | RAFT methods lack unified theory; terminal-only shaping suboptimal |
+| 2025-10 | [2510.18072](https://arxiv.org/abs/2510.18072) | AC-Flow | Direct Preference | No actor-critic framework for continuous-time flow matching |
+| 2025-11 | [2511.19356](https://arxiv.org/abs/2511.19356) | TaRoS | Policy Gradient | Goodhart's Law / reward saturation in video GRPO |
+| 2025-12 | [2512.04332](https://arxiv.org/abs/2512.04332) | DDRL | Direct Preference | On-policy KL regularisation causes reward hacking at scale |
+| 2025-12 | [2512.04559](https://arxiv.org/abs/2512.04559) | SQDF | Direct Preference | No principled Q-function for diffusion denoising chain |
+| 2025-12 | [2512.08153](https://arxiv.org/abs/2512.08153) | TreeGRPO | Policy Gradient | Trajectory-level uniform advantages; high sampling cost |
+| 2025-12 | [2512.15347](https://arxiv.org/abs/2512.15347) | Pro-GRPO | Policy Gradient | Large groups costly; reward-clustered samples give no signal |
+| 2025-12 | [2512.17951](https://arxiv.org/abs/2512.17951) | SuperFlow | Policy Gradient | Fixed group size ignores per-prompt variance; coarse step advantages |
+| 2025-12 | [2512.21514](https://arxiv.org/abs/2512.21514) | DiverseGRPO | Policy Gradient | GRPO collapses toward few high-reward modes |
+| 2025-12 | [2512.24138](https://arxiv.org/abs/2512.24138) | GARDO | Direct Preference | KL regularisation impedes exploration; no uncertainty-aware gating |
+| 2026-01 | [2601.00423](https://arxiv.org/abs/2601.00423) | E-GRPO | Policy Gradient | Low-entropy SDE steps waste compute; exploration budget uniform |
+| 2026-01 | [2601.04153](https://arxiv.org/abs/2601.04153) | Diffusion-DRF | Direct Preference | Non-differentiable rewards block VLM-based feedback |
+| 2026-01 | [2601.05729](https://arxiv.org/abs/2601.05729) | TAGRPO | Policy Gradient | Standard GRPO fails on I2V; needs relational trajectory alignment |
+| 2026-01 | [2601.12401](https://arxiv.org/abs/2601.12401) | DRIFT | Policy Gradient | RL fine-tuning provably converges to Dirac delta (mode collapse) |
+| 2026-01 | [2601.20218](https://arxiv.org/abs/2601.20218) | DenseGRPO | Policy Gradient | Terminal reward applied uniformly to all steps — sparse signal |
+| 2026-02 | [2602.12229](https://arxiv.org/abs/2602.12229) | VMPO | Direct Preference | SMC/variance perspective on diffusion alignment unexplored |
+| 2026-03 | [2603.07700](https://arxiv.org/abs/2603.07700) | TDM-R1 | Direct Preference | RL for few-step (2–4 step) diffusion with non-differentiable rewards |
+| 2026-03 | [2603.21872](https://arxiv.org/abs/2603.21872) | SAGE-GRPO | Policy Gradient | SDE noise in video generation degrades rollout quality off-manifold |
 
 ---
 
-## Coupled Paradigm Advances
+## Policy Gradient Paradigm Advances
 
-Papers that extend or diagnose the SDE-based GRPO family.
+Papers whose objective is a PPO-clip / importance-weighted policy gradient over the denoising trajectory (the SDE-based GRPO family) — or, more broadly, value/Q-based and reward-maximisation variants that optimise the same expected-reward objective.
 
 ---
 
@@ -195,9 +195,9 @@ Combined with FlowGRPO-style GRPO objective over the SDE window.
 
 ---
 
-## Decoupled Paradigm Advances
+## Direct Preference Paradigm Advances
 
-Papers that extend or diagnose the ELBO / solver-agnostic family.
+Papers whose objective is a preference / ELBO / matching loss on final (or single-step) samples — solver-agnostic, no per-step importance ratio. A few entries here are actor-critic, soft-Q, or reward-maximisation variants that are *solver-agnostic but reward-based* rather than preference-based per se; they are grouped here pending dedicated review and flagged in their entries.
 
 ---
 

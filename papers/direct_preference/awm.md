@@ -9,7 +9,7 @@
 | **Venue** | — (preprint) |
 | **Authors** | Shuchen Xue, Chongjian Ge, Shilong Zhang, Yichen Li, Zhi-Ming Ma |
 | **GitHub** | https://github.com/scxue/advantage_weighted_matching |
-| **Paradigm** | **Decoupled** — flow matching MSE reweighted by advantage; no SDE, no importance ratio |
+| **Paradigm** | **Direct Preference** — flow matching MSE reweighted by advantage; no SDE, no importance ratio |
 | **Cites** | DDPO (2305.13301), FlowGRPO (2505.05470), flow matching, LLM pretraining alignment |
 
 ---

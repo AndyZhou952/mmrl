@@ -10,7 +10,7 @@
 | **Authors** | Zeyue Xue, Jie Wu, Yu Gao, Fangyuan Kong, Lingting Zhu, Mengzhao Chen, Zhiheng Liu, Wei Liu, Qiushan Guo, Weilin Huang, Ping Luo |
 | **GitHub** | https://github.com/XueZeyue/DanceGRPO |
 | **Project** | https://dancegrpo.github.io |
-| **Paradigm** | **Coupled** — per-step Gaussian log-prob required; SDE-based sampling |
+| **Paradigm** | **Policy Gradient** — per-step Gaussian log-prob required; SDE-based sampling |
 | **Cites** | DDPO, DPOK, GRPO (DeepSeek-R1), SD3, FLUX, HunyuanVideo, SkyReels-I2V |
 | **Cited by** | CPS, DiffusionNFT, GRPO-Guard, DGPO |
 
@@ -24,7 +24,7 @@ DanceGRPO is **concurrent** with FlowGRPO (submitted 4 days later, May 2025) and
 
 ## Problem 1 — A single GRPO implementation cannot serve both DDPM and flow matching
 
-**Issue**: DDPM and rectified flow models have structurally different denoising processes — different noise schedules, different parameterisations ($\epsilon_\theta$ vs. $v_\theta$), and different step distributions. Applying GRPO to each would require two separate codebases with two separate SDE derivations and two separate importance-ratio computations. Existing coupled methods (DDPO) only support DDPM and do not generalise to flow matching or video.
+**Issue**: DDPM and rectified flow models have structurally different denoising processes — different noise schedules, different parameterisations ($\epsilon_\theta$ vs. $v_\theta$), and different step distributions. Applying GRPO to each would require two separate codebases with two separate SDE derivations and two separate importance-ratio computations. Existing policy-gradient methods (DDPO) only support DDPM and do not generalise to flow matching or video.
 
 **Idea**: Derive a **unified SDE reverse process** under a common formulation that covers both DDPM (including DDIM-like schedules) and rectified flow. Both derivations yield a Gaussian per-step transition, so the GRPO importance ratio and clip objective take the same form in both cases.
 
@@ -123,6 +123,23 @@ Supported backbones: Stable Diffusion (DDPM), FLUX (flow), HunyuanVideo (flow, T
 
 ---
 
+## Reference Implementation (VeRL-Omni)
+
+In [`diffusion_algos.py`](https://github.com/verl-project/verl-omni/blob/main/verl_omni/trainer/diffusion/diffusion_algos.py) the name `"dance_grpo"` is registered to the **same** `FlowGRPOLoss` class as `"flow_grpo"` — DanceGRPO and FlowGRPO share an identical PPO-clip objective; only the rollout (how $\mu$ and $\rho_t$ are computed, DDPM vs. flow) differs, and that lives outside the loss:
+
+```python
+@register_diffusion_loss("dance_grpo")   # same class as "flow_grpo"
+def loss_dance_grpo(old_lp, lp, adv, cfg):
+    c = cfg.diffusion_loss
+    adv = clamp(adv, -c.adv_clip_max, c.adv_clip_max)
+    ratio = exp(lp - old_lp)
+    unclipped = -adv * ratio
+    clipped   = -adv * clamp(ratio, 1 - c.clip_ratio, 1 + c.clip_ratio)
+    return mean(max(unclipped, clipped))         # PPO-clip
+```
+
+---
+
 ## Difference from FlowGRPO
 
 | Aspect | FlowGRPO | DanceGRPO |
@@ -143,4 +160,4 @@ Supported backbones: Stable Diffusion (DDPM), FLUX (flow), HunyuanVideo (flow, T
 | SDE noise → image artifacts → misleads reward | [CPS](cps.md) |
 | Importance ratio imbalance → reward hacking | [GRPO-Guard](grpo_guard.md) |
 | Full SDE still expensive; no ODE speedup | [MixGRPO](mix_grpo.md) |
-| SDE blocks fast ODE samplers entirely | [DGPO](../decoupled/dgpo.md), [AWM](../decoupled/awm.md) |
+| SDE blocks fast ODE samplers entirely | [DGPO](../direct_preference/dgpo.md), [AWM](../direct_preference/awm.md) |

@@ -3,13 +3,13 @@
 Tracks **industry-grade production models** whose official technical reports document the use
 of multimodal reinforcement learning in their training pipelines. Academia-only baselines are excluded.
 
-Links to algorithm notes in this repo use relative paths (e.g. `papers/coupled/flow_grpo.md`).
+Links to algorithm notes in this repo use relative paths (e.g. `papers/policy_gradient/flow_grpo.md`).
 
 ---
 
 ## Scope and conventions
 
-- **RL algorithm links**: `[coupled]` or `[decoupled]` labels match the paradigm taxonomy in `papers/INDEX.md`.
+- **RL algorithm links**: `[policy gradient]` or `[direct preference]` labels match the paradigm taxonomy in `papers/INDEX.md`.
 - **"In-house"**: algorithm described in the model's technical report but with no separate public arXiv paper.
 - **"Not disclosed"**: model uses RL/RLHF post-training but the specific algorithm is not named in the technical report.
 - Unless noted, GitHub links point to the **official release repository**.
@@ -60,7 +60,7 @@ Links to algorithm notes in this repo use relative paths (e.g. `papers/coupled/f
 | SFT | — | Quality fine-tuning |
 | Post-training | **Video-DPO** | Reduce motion artifacts, improve visual quality |
 
-**Video-DPO**: a direct application of DPO to video generation. Preference pairs are constructed as (higher-quality video, lower-quality video) for the same prompt. The DPO loss is computed over the full video denoising trajectory. This is an in-house adaptation; no separate paper exists beyond the technical report. Conceptually extends Diffusion-DPO ([2311.12908](https://arxiv.org/abs/2311.12908)) [decoupled] to video.
+**Video-DPO**: a direct application of DPO to video generation. Preference pairs are constructed as (higher-quality video, lower-quality video) for the same prompt. The DPO loss is computed over the full video denoising trajectory. This is an in-house adaptation; no separate paper exists beyond the technical report. Conceptually extends Diffusion-DPO ([2311.12908](https://arxiv.org/abs/2311.12908)) [direct preference] to video.
 
 ---
 
@@ -82,12 +82,12 @@ Links to algorithm notes in this repo use relative paths (e.g. `papers/coupled/f
 |---|---|---|
 | CT | — | Continued pre-training |
 | SFT | — | Quality fine-tuning |
-| RLHF stage 1 (offline) | **DPO** [decoupled] | Preference pairs annotated for motion quality, semantics, aesthetics |
+| RLHF stage 1 (offline) | **DPO** [direct preference] | Preference pairs annotated for motion quality, semantics, aesthetics |
 | RLHF stage 2 (online) | **Online RL** (not disclosed) | Further aesthetic and semantic refinement |
 
 Applied separately for T2V and I2V pipelines. The offline DPO stage establishes a strong starting policy; the online stage (algorithm not named in the report) refines from there.
 
-**SAGE-GRPO** (arXiv 2603.21872): a separate Tencent research paper fine-tunes HunyuanVideo-1.5 with manifold-aware GRPO [coupled], demonstrating state-of-the-art video alignment. This is a research demonstration, not the official HunyuanVideo training pipeline.
+**SAGE-GRPO** (arXiv 2603.21872): a separate Tencent research paper fine-tunes HunyuanVideo-1.5 with manifold-aware GRPO [policy gradient], demonstrating state-of-the-art video alignment. This is a research demonstration, not the official HunyuanVideo training pipeline.
 
 ---
 
@@ -108,10 +108,10 @@ Applied separately for T2V and I2V pipelines. The offline DPO stage establishes 
 | Stage | Algorithm | Purpose |
 |---|---|---|
 | SFT | — | Instruction following |
-| Offline RL | **DPO** [decoupled] (~150K pairs) | General alignment with human preferences |
+| Offline RL | **DPO** [direct preference] (~150K pairs) | General alignment with human preferences |
 | Online RL | **GRPO** (text-oriented) | Reasoning capability, objective QA, math |
 
-Note: The RL here targets **multimodal understanding** (visual reasoning, speech synthesis quality, multimodal QA) — not image or video generation. GRPO is used in its text-LLM formulation, not the flow-matching adaptation tracked in `papers/coupled/`.
+Note: The RL here targets **multimodal understanding** (visual reasoning, speech synthesis quality, multimodal QA) — not image or video generation. GRPO is used in its text-LLM formulation, not the flow-matching adaptation tracked in `papers/policy_gradient/`.
 
 ---
 
@@ -133,7 +133,7 @@ Wan 2.1 and Wan 2.2 technical reports focus on pre-training architecture (novel 
 
 Wan 2.2 introduces a **MoE architecture** with two denoising experts: a high-noise expert (layout/composition) and a low-noise expert (fine detail). The post-training process mentions RLHF but no algorithm name.
 
-**Wan-R1** (third-party, not official): applies GRPO [coupled] on top of Wan2.2-TI2V-5B as a research demonstration of RL fine-tuning for image-to-video. Not part of Wan's official training pipeline.
+**Wan-R1** (third-party, not official): applies GRPO [policy gradient] on top of Wan2.2-TI2V-5B as a research demonstration of RL fine-tuning for image-to-video. Not part of Wan's official training pipeline.
 
 ---
 
@@ -179,14 +179,14 @@ The most detailed public post-training pipeline of any T2I model to date. Five s
 | Stage | Algorithm | Purpose |
 |---|---|---|
 | 1. SFT | — | Diverse high-quality images, progressive quality increase |
-| 2. DPO | **Diffusion-DPO** [decoupled] | Suppress structural defects; pairs: high-quality vs. distorted |
-| 3. MixGRPO | **MixGRPO** [coupled] | Aesthetic optimization; hybrid ODE-SDE sliding-window GRPO |
-| 4. SRPO | **SRPO** [decoupled] | Semantic relative alignment: push images toward positive text descriptions |
+| 2. DPO | **Diffusion-DPO** [direct preference] | Suppress structural defects; pairs: high-quality vs. distorted |
+| 3. MixGRPO | **MixGRPO** [policy gradient] | Aesthetic optimization; hybrid ODE-SDE sliding-window GRPO |
+| 4. SRPO | **SRPO** [direct preference] | Semantic relative alignment: push images toward positive text descriptions |
 | 5. ReDA† | **ReDA (in-house)** | Reward distribution alignment: minimize divergence from high-reward distribution |
 
 **Algorithm notes:**
-- **MixGRPO**: the same algorithm as `papers/coupled/mix_grpo.md` — Tencent developed MixGRPO (arXiv 2507.21802) and applied it here.
-- **SRPO**: the Tencent algorithm described in arXiv [2509.06942](https://arxiv.org/abs/2509.06942) — see `papers/decoupled/srpo.md`. Injects a fixed noise prior into any timestep, recovers the clean image in one closed-form step, and scores with a semantic relative reward (positive vs. negative text condition difference). Decoupled; no SDE or multi-step denoising gradients required.
+- **MixGRPO**: the same algorithm as `papers/policy_gradient/mix_grpo.md` — Tencent developed MixGRPO (arXiv 2507.21802) and applied it here.
+- **SRPO**: the Tencent algorithm described in arXiv [2509.06942](https://arxiv.org/abs/2509.06942) — see `papers/direct_preference/srpo.md`. Injects a fixed noise prior into any timestep, recovers the clean image in one closed-form step, and scores with a semantic relative reward (positive vs. negative text condition difference). Direct Preference; no SDE or multi-step denoising gradients required.
 - **ReDA**: see [New algorithms](#new-rl-algorithms-not-yet-in-this-repo).
 
 ---
@@ -207,7 +207,7 @@ The most detailed public post-training pipeline of any T2I model to date. Five s
 | Stage | Algorithm | Purpose |
 |---|---|---|
 | SFT | — | Curriculum learning: simple → complex text rendering |
-| Post-training | **DPO** [decoupled] + **GRPO** [coupled] | Alignment with human aesthetic and text-accuracy preferences |
+| Post-training | **DPO** [direct preference] + **GRPO** [policy gradient] | Alignment with human aesthetic and text-accuracy preferences |
 
 DPO and GRPO are confirmed in community reviews of the full technical report. The abstract focuses on curriculum learning for text rendering; algorithm details are in the post-training section of the PDF. Specific reward models used are not detailed in available public summaries.
 
@@ -228,11 +228,11 @@ DPO and GRPO are confirmed in community reviews of the full technical report. Th
 
 | Stage | Algorithm | Purpose |
 |---|---|---|
-| Post-training | **DPO** [decoupled] | Motion dynamics and visual integrity alignment |
+| Post-training | **DPO** [direct preference] | Motion dynamics and visual integrity alignment |
 
 The report explicitly favors DPO over GRPO to avoid the computationally expensive trajectory sampling that GRPO requires in flow-based models (i.e., the ODE→SDE conversion). Preference pairs are constructed via diverse condition sampling + human evaluation, then DPO loss is computed over the video diffusion trajectory.
 
-This is a direct example of a production model **choosing the decoupled paradigm** over coupled (GRPO) for practical efficiency reasons.
+This is a direct example of a production model **choosing the direct-preference paradigm** over policy-gradient (GRPO) for practical efficiency reasons.
 
 ---
 
@@ -276,7 +276,7 @@ These algorithms appear in industry model training pipelines but have no separat
 | **Proposed by** | Tencent (HunyuanImage 3.0 team) |
 | **First appearance** | HunyuanImage 3.0 tech report ([2509.23951](https://arxiv.org/abs/2509.23951)), Sep 2025 |
 | **Separate paper** | None (in-house algorithm, not published independently as of 2026-05) |
-| **Paradigm** | Decoupled (operates on final images, not per-step likelihood) |
+| **Paradigm** | Direct Preference (operates on final images, not per-step likelihood) |
 
 **Description from the tech report**: ReDA minimizes the divergence between the model's output distribution and a "high-reward distribution" defined by a curated set of diverse high-quality images. Rather than using pairwise preferences (as in DPO) or policy gradient (as in GRPO), it directly aligns the model's generative distribution toward a reference distribution of visually excellent images.
 
@@ -293,9 +293,9 @@ These algorithms appear in industry model training pipelines but have no separat
 | **Proposed by** | StepFun (Step-Video-T2V team) |
 | **First appearance** | Step-Video-T2V tech report ([2502.10248](https://arxiv.org/abs/2502.10248)), Feb 2025 |
 | **Separate paper** | None (described only in the technical report) |
-| **Paradigm** | Decoupled (direct extension of Diffusion-DPO to video) |
+| **Paradigm** | Direct Preference (direct extension of Diffusion-DPO to video) |
 
-**Description**: applies the Diffusion-DPO [decoupled] objective to video generation by constructing preference pairs of (higher-quality, lower-quality) videos for the same prompt, then computing the ELBO-based DPO loss over the video DiT. Reduces motion artifacts and improves temporal consistency.
+**Description**: applies the Diffusion-DPO [direct preference] objective to video generation by constructing preference pairs of (higher-quality, lower-quality) videos for the same prompt, then computing the ELBO-based DPO loss over the video DiT. Reduces motion artifacts and improves temporal consistency.
 
 Conceptually the same as Diffusion-DPO ([2311.12908](https://arxiv.org/abs/2311.12908)) extended to video. No theoretical novelty beyond the application; the technical report treats it as an engineering adaptation.
 
@@ -313,7 +313,7 @@ Conceptually the same as Diffusion-DPO ([2311.12908](https://arxiv.org/abs/2311.
 
 GSPO was developed to address instability in GRPO during long RL training runs (which can cause irreversible model collapse). It replaces the per-token ratio with a per-sequence ratio, reducing variance. Used in InternVL3.5 and Qwen2.5-VL post-training for reasoning.
 
-**Not directly related** to the coupled/decoupled image-generation RL taxonomy in this repo, but listed here because InternVL3.5 uses it for multimodal reasoning alignment.
+**Not directly related** to the policy_gradient/direct-preference image-generation RL taxonomy in this repo, but listed here because InternVL3.5 uses it for multimodal reasoning alignment.
 
 ---
 
@@ -327,9 +327,9 @@ Every model with a disclosed post-training pipeline includes at least one DPO st
 
 HunyuanImage 3.0 (MixGRPO after DPO), HunyuanVideo 1.5 (online RL after DPO), Qwen2.5-Omni (GRPO after DPO), and InternVL3.5 (GSPO after MPO) all follow the same two-stage pattern: offline warm-up → online refinement.
 
-### Decoupled preferred for video; coupled for image
+### Direct Preference preferred for video; policy-gradient for image
 
-Kling-Omni explicitly chose DPO over GRPO for video generation to avoid expensive SDE trajectory sampling. Step-Video-T2V also uses decoupled Video-DPO. In contrast, HunyuanImage 3.0 uses coupled MixGRPO for image generation, where the per-step SDE cost is more manageable.
+Kling-Omni explicitly chose DPO over GRPO for video generation to avoid expensive SDE trajectory sampling. Step-Video-T2V also uses direct-preference Video-DPO. In contrast, HunyuanImage 3.0 uses policy-gradient MixGRPO for image generation, where the per-step SDE cost is more manageable.
 
 ### Algorithm disclosure is sparse
 

@@ -1,68 +1,70 @@
-# Multi-Modal Reinforcement Learning (MMRL)
+# Diffusion-RL Survey
 
 A survey repository tracing the development of reinforcement learning algorithms for
 multi-modal generative models — primarily text-to-image and text-to-video diffusion/flow models.
 
-**Assumed background**: readers are expected to know (1) multimodal model architecture and training basics, (2) diffusion/flow matching training (DDPM, DDIM, rectified flow), and (3) RL fundamentals including PPO and GRPO as applied in LLMs. The papers covered here address how these RL ideas are extended to continuous generative models — a non-trivial gap that each paper solves differently.
+**Assumed background**: readers are expected to know (1) multimodal model architecture and training basics, (2) diffusion/flow matching training (DDPM, DDIM, rectified flow), and (3) RL fundamentals including PPO and GRPO as applied in LLMs. The papers covered here address how these RL ideas are extended to continuous generative models — a non-trivial gap that each paper solves differently. New to the area? Start with the [prerequisites](papers/prerequisites/) (GRPO and flow-matching primers).
+
+This repository follows the **VeRL-Omni** *ubiquitous language*: algorithms are grouped by training objective into **Policy Gradient** and **Direct Preference** families (rather than the older "coupled / decoupled" SDE-vs-ODE framing), so a reader can move from "understand the algorithm" here to "run it in VeRL-Omni" directly.
 
 ---
 
 ## Repository Layout
 
 ```
-mmrl/
+diffusion-rl-survey/
 ├── README.md                     ← you are here
 ├── INTEGRATION_GUIDE.md          ← how to add new algorithms (format rules, notation, checklist)
 ├── models.md                     ← industry models using multimodal RL (2025–2026)
 └── papers/
     ├── INDEX.md                  ← master table: all papers, dates, arXiv links, citation map
     ├── READING_GUIDE.md          ← how one approach leads to the next; recommended paths
-    ├── advances.md               ← 20+ additional papers from late 2025–2026
-    ├── coupled/                  ← SDE-coupled: training tied to stochastic sampling dynamics
+    ├── academia.md               ← 20+ additional papers from late 2025–2026
+    ├── prerequisites/            ← primers: GRPO basics, flow matching basics
+    ├── policy_gradient/          ← PPO-clip policy gradient over the trajectory (FlowGRPO family)
     │   ├── flow_grpo.md          ← FlowGRPO (May 2025, NeurIPS 2025) — pioneering GRPO for flow matching
     │   ├── dance_grpo.md         ← DanceGRPO (May 2025) — concurrent; unified image+video
     │   ├── mix_grpo.md           ← MixGRPO + Flash variant (Jul 2025)
-    │   ├── cps.md                ← CPS — noise-artifact fix for coupled methods (Sep 2025)
-    │   ├── grpo_guard.md         ← GRPO-Guard — anti-reward-hacking for coupled (Oct 2025)
+    │   ├── cps.md                ← FlowGRPO-CPS — noise-artifact fix (Sep 2025)
+    │   ├── grpo_guard.md         ← GRPO-Guard — anti-reward-hacking (Oct 2025)
     │   └── uni_grpo.md           ← UniGRPO — reasoning-driven generation (Mar 2026)
-    └── decoupled/                ← Solver-agnostic: training independent of sampling dynamics
+    └── direct_preference/        ← preference / MSE loss on final samples (solver-agnostic)
         ├── srpo.md               ← SRPO (Sep 2025) — noise-prior recovery + semantic relative reward
         ├── diffusion_nft.md      ← DiffusionNFT — forward-process RL (Sep 2025)
         ├── awm.md                ← AWM — advantage-weighted matching loss (Sep 2025)
         └── dgpo.md               ← DGPO — group preference, ODE-compatible (Oct 2025)
 ```
 
-Historical precursors (no dedicated files): **DDPO** (ICLR 2024, [2305.13301](https://arxiv.org/abs/2305.13301)) — first diffusion MDP, root of the coupled line; **Diffusion-DPO** (CVPR 2024, [2311.12908](https://arxiv.org/abs/2311.12908)) — offline DPO via diffusion ELBO, root of the decoupled line.
+Historical precursors (no dedicated files): **DDPO** (ICLR 2024, [2305.13301](https://arxiv.org/abs/2305.13301)) — first diffusion MDP, root of the policy-gradient line; **Diffusion-DPO** (CVPR 2024, [2311.12908](https://arxiv.org/abs/2311.12908)) — offline DPO via diffusion ELBO, root of the direct-preference line.
 
 ---
 
 ## Core Paradigm Split
 
-The central conceptual divide in this field:
+The central conceptual divide in this field is the **training objective**:
 
-### Coupled paradigm
+### Policy Gradient paradigm
 
-Training timesteps are **coupled with the SDE-based sampling dynamics**. Computing the policy gradient requires tractable log-probability $\log \pi_\theta(x_{t-1}|x_t)$ at each denoising step, which in turn requires the sampler to be stochastic (SDE-based) so that a density exists.
+The objective is a **PPO-clip / importance-weighted policy gradient accumulated over multiple denoising timesteps of the same trajectory** (the FlowGRPO family). Computing it requires a tractable per-step log-probability $\log \pi_\theta(x_{t-1}\mid x_t)$, which in turn requires a stochastic (SDE) sampler so that a density exists — an *implication* of the objective, not its definition.
 
 | What it means in practice | Consequence |
 |---|---|
-| Must use SDE samplers during training | Slower than deterministic ODE samplers |
-| Importance ratio $\rho = \pi_\theta / \pi_{\theta_\text{old}}$ needed at each step | Sensitive to ratio imbalance across timesteps |
-| Full reverse-process rollout required | Memory-intensive for long trajectories |
+| Importance ratio $\rho = \pi_\theta / \pi_{\theta_\text{old}}$ needed at each step | Forces an SDE sampler; sensitive to ratio imbalance across timesteps |
+| Gradient flows through (a window of) reverse steps | Slower / more memory-intensive than ODE inference |
 
-Methods: **FlowGRPO, DanceGRPO, MixGRPO** (and fixes: CPS, GRPO-Guard)
+Methods: **FlowGRPO, DanceGRPO, MixGRPO, FlowDPPO** (and fixes: FlowGRPO-CPS, GRPO-Guard); UniGRPO extends it to joint text+image.
 
-### Decoupled paradigm
+### Direct Preference paradigm
 
-Training timesteps are **decoupled from the actual sampling dynamics**. The training objective (preference loss, contrastive matching, or advantage-weighted matching) does not require log-probability computation over denoising steps, making these methods inherently **solver-agnostic** — any ODE solver can generate trajectories without modifying the training procedure.
+The objective is a **preference or MSE-style loss evaluated on final (or single) samples** — preference, contrastive matching, or advantage-weighted matching — with **no per-step importance ratio**. This makes the methods inherently **solver-agnostic**: any ODE/DDIM/DPM solver can generate trajectories without changing the loss.
 
 | What it means in practice | Consequence |
 |---|---|
 | Can use fast ODE/DDIM samplers during training | Much faster data collection |
-| No importance ratio needed | No ratio-imbalance failure mode |
+| No per-step importance ratio | No ratio-imbalance failure mode |
 | Works with black-box solvers and CFG | More compatible with production pipelines |
 
-Methods: **Diffusion-DPO, DGPO, DiffusionNFT, AWM**
+Methods: **Diffusion-DPO, DGPO, DiffusionNFT, AWM, SRPO**
 
 ---
 
@@ -70,13 +72,13 @@ Methods: **Diffusion-DPO, DGPO, DiffusionNFT, AWM**
 
 ### By training objective
 
-| Objective type | Papers |
-|---|---|
-| **Policy gradient, PPO-clipped** | FlowGRPO, DanceGRPO, MixGRPO |
-| **Group preference (DPO-style ELBO)** | Diffusion-DPO, DGPO |
-| **Advantage-weighted matching loss** | AWM |
-| **Contrastive forward-process** | DiffusionNFT |
-| **Direct reward + semantic relative reward** | SRPO |
+| Objective type | Family | Papers |
+|---|---|---|
+| **Policy gradient, PPO-clipped** | Policy Gradient | FlowGRPO, DanceGRPO, MixGRPO, FlowDPPO |
+| **Group preference (DPO-style ELBO)** | Direct Preference | Diffusion-DPO, DGPO |
+| **Advantage-weighted matching loss** | Direct Preference | AWM |
+| **Contrastive forward-process** | Direct Preference | DiffusionNFT |
+| **Direct reward + semantic relative reward** | Direct Preference | SRPO |
 
 ### By efficiency problem solved
 
@@ -84,7 +86,7 @@ Methods: **Diffusion-DPO, DGPO, DiffusionNFT, AWM**
 |---|---|
 | Flow matching ODE has no density → GRPO undefined | FlowGRPO (ODE→SDE conversion) |
 | All $T$ SDE steps need gradients → slow | FlowGRPO-Fast, MixGRPO, MixGRPO-Flash |
-| SDE noise artifacts hurt reward learning | CPS |
+| SDE noise artifacts hurt reward learning | FlowGRPO-CPS |
 | Ratio imbalance → reward hacking | GRPO-Guard |
 | SDE requirement blocks fast ODE samplers | DGPO, AWM, DiffusionNFT |
 | Pretraining objective diverges from RL objective | AWM |
@@ -104,16 +106,16 @@ Methods: **Diffusion-DPO, DGPO, DiffusionNFT, AWM**
 2025-05  FlowGRPO       — first to apply GRPO to flow matching; ODE→SDE; +Fast variant  [NeurIPS 2025]
 2025-05  DanceGRPO      — concurrent; unified image+video, 4 backbones
 2025-07  MixGRPO        — sliding-window ODE/SDE; +Flash (−71% time)
-2025-09  CPS            — DDIM-inspired sampler; eliminates SDE noise artifacts  [coupled fix]
+2025-09  CPS            — DDIM-inspired sampler; eliminates SDE noise artifacts  [policy-gradient fix]
 2025-09  SRPO           — noise-prior closed-form recovery + semantic relative reward (Tencent)
 2025-09  DiffusionNFT   — forward-process RL; no MDP, no SDE, no CFG conflicts
 2025-09  AWM            — replaces DDPO log-prob with pretraining matching loss; 24× faster
 2025-10  DGPO           — group preference via ELBO; ODE-compatible; ~20× faster
-2025-10  GRPO-Guard     — ratio normalisation + gradient reweighting  [coupled fix]
+2025-10  GRPO-Guard     — ratio normalisation + gradient reweighting  [policy-gradient fix]
 2026-03  UniGRPO        — unified policy optimisation for reasoning-driven visual generation
 ```
 
-See `papers/advances.md` for 20+ additional algorithm papers from late 2025–2026 (BranchGRPO, TreeGRPO, DenseGRPO, DiverseGRPO, DRIFT, TDM-R1, and more).
+See `papers/academia.md` for 20+ additional algorithm papers from late 2025–2026 (BranchGRPO, TreeGRPO, DenseGRPO, DiverseGRPO, DRIFT, TDM-R1, and more).
 
 See `papers/INDEX.md` for the full citation graph.
 
@@ -125,5 +127,5 @@ See **[`papers/READING_GUIDE.md`](papers/READING_GUIDE.md)** for the full narrat
 
 Quick paths:
 - **Core chain** (how FlowGRPO is iteratively improved): `flow_grpo → mix_grpo → grpo_guard → cps`
-- **Decoupled branch** (alternatives that drop the SDE requirement): `flow_grpo → awm → dgpo → srpo`
+- **Direct Preference branch** (alternatives that drop the SDE requirement): `flow_grpo → awm → dgpo → srpo`
 - **Concurrent breadth**: `dance_grpo` alongside either path above
