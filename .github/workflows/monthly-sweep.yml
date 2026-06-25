@@ -1,0 +1,131 @@
+name: Monthly Maintenance (lint + paper sweep + auto-integrate)
+
+on:
+  schedule:
+    # 09:00 UTC on the 1st of each month
+    - cron: '0 9 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write        # create a branch for the integration PR
+  pull-requests: write   # open the PR
+  issues: write          # fall back to a triage issue
+
+jobs:
+  lint-and-sweep:
+    name: Math lint + arXiv sweep + auto-integrate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # 1) Health check: GitHub-rendering math lint over all markdown.
+      - name: Math lint
+        run: |
+          python .github/scripts/lint_math.py \
+            $(find . -name '*.md' -not -path './.git/*' -not -path './site/*' | sort)
+
+      # 2) arXiv sweep → candidate list (used for the issue fallback).
+      #    The AI steps call an OpenAI-compatible `{LLM_BASE_URL}/chat/completions`,
+      #    so any compatible provider works. In Settings → Secrets and variables → Actions:
+      #        Secret   LLM_API_KEY    — the provider key
+      #        Variable LLM_BASE_URL   — OpenAI-compatible base (see table)
+      #        Variable LLM_MODEL      — a model id (see table)
+      #    Without the secret, the AI steps are skipped and a triage issue is opened.
+      #
+      #    Provider           LLM_BASE_URL                          LLM_MODEL (examples)        Docs
+      #    -----------------  ------------------------------------  --------------------------  --------------------------
+      #    DeepSeek           https://api.deepseek.com              deepseek-v4-flash           api-docs.deepseek.com
+      #    MiniMax            https://api.minimax.io/v1             MiniMax-M2                  platform.minimax.io/docs
+      #    Xiaomi MiMo        https://api.xiaomimimo.com/v1         mimo-v2.5-pro               mimo.mi.com/docs
+      #    OpenAI             https://api.openai.com/v1             gpt-4o-mini                 platform.openai.com/docs
+      #    Gemini (compat)    https://generativelanguage.googleapis.com/v1beta/openai  gemini-2.0-flash  ai.google.dev
+      #    (All OpenAI-compatible with Bearer auth; the scripts append /chat/completions.)
+      - name: Fetch candidate papers
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
+        run: python .github/scripts/fetch_papers.py --days 35 --out candidates.md
+
+      # 3) Auto-integrate qualifying papers per INTEGRATION_GUIDE (dedicated page or
+      #    academia.md entry). Sets steps.integrate.outputs.mode = pr | issue.
+      #      exit 0 → changes made   → open PR
+      #      exit 2 → no LLM_API_KEY → open issue
+      #      exit 3 → nothing integrated (none qualified) → open issue
+      - name: Auto-integrate
+        id: integrate
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
+        run: |
+          set +e
+          python .github/scripts/integrate_papers.py --days 35 --max 5 --summary integration_summary.md
+          code=$?
+          set -e
+          echo "exit code: $code"
+          if [ "$code" -eq 0 ]; then echo "mode=pr"    >> "$GITHUB_OUTPUT";
+          else                       echo "mode=issue" >> "$GITHUB_OUTPUT"; fi
+
+      # 4a) Lint the generated markdown (auto-fix GitHub-math issues) before the PR.
+      - name: Lint integrated docs
+        if: steps.integrate.outputs.mode == 'pr'
+        run: |
+          python .github/scripts/lint_math.py --fix \
+            $(find papers -name '*.md') README.md models.md INTEGRATION_GUIDE.md || true
+          python .github/scripts/lint_math.py \
+            $(find . -name '*.md' -not -path './.git/*' -not -path './site/*' | sort)
+
+      # 4a-bis) Notation-consistency check: verify the integrated pages keep notation
+      #         consistent with NOTATION.md (a canonical symbol is never reused with a
+      #         different meaning, and any extra symbol a page introduces is defined
+      #         locally on that page). Advisory — never blocks; the report is appended
+      #         to the PR body for the human reviewer. Without LLM_API_KEY it writes a
+      #         skip notice and exits 0 (uses the same provider vars as the AI steps).
+      - name: Notation consistency check
+        if: steps.integrate.outputs.mode == 'pr'
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
+        run: |
+          python .github/scripts/check_notation.py --out notation_report.md
+          printf '\n\n---\n\n' >> integration_summary.md
+          cat notation_report.md >> integration_summary.md
+
+      # 4b) Open the integration PR (human review required; never auto-merged).
+      - name: Open integration PR
+        if: steps.integrate.outputs.mode == 'pr'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          MONTH="$(date -u +%Y-%m)"
+          BRANCH="bot/paper-sweep-${MONTH}-${GITHUB_RUN_ID}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          # Only commit survey content — never the throwaway run artifacts.
+          git add papers README.md models.md INTEGRATION_GUIDE.md
+          git commit -m "bot: integrate monthly paper sweep (${MONTH})"
+          git push origin "$BRANCH"
+          gh pr create --base master --head "$BRANCH" \
+            --title "Monthly paper integration — ${MONTH} (review required)" \
+            --body-file integration_summary.md \
+            --label "paper-sweep" || \
+          gh pr create --base master --head "$BRANCH" \
+            --title "Monthly paper integration — ${MONTH} (review required)" \
+            --body-file integration_summary.md
+
+      # 4c) Fallback: no key / nothing integrated → triage issue with the candidate list.
+      - name: Open triage issue
+        if: steps.integrate.outputs.mode == 'issue'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TITLE="Monthly paper sweep — $(date -u +%Y-%m)"
+          gh issue create --title "$TITLE" --body-file candidates.md --label "paper-sweep" || \
+          gh issue create --title "$TITLE" --body-file candidates.md

@@ -1,0 +1,13 @@
+# MkDocs build output
+site/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Monthly-sweep run artifacts (generated in CI, never committed)
+candidates.md
+candidates.json
+integration_summary.md

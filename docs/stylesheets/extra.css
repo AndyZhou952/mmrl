@@ -1,0 +1,529 @@
+/* =============================================================================
+   Diffusion-RL Survey — editorial theme for MkDocs Material.
+
+   Design intent (after Claude / huashu-design): warm "paper" palette instead of
+   blue/black/white, a display serif + text serif pairing, magazine-grade
+   hierarchy, hairline rules, and restrained rounding. Math (KaTeX) renders in a
+   serif, so a serif body keeps prose and equations in the same voice.
+
+   Fonts are loaded here (Fraunces for display) and via theme.font in mkdocs.yml
+   (Newsreader for text, JetBrains Mono for code).
+   ========================================================================== */
+
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&display=swap");
+/* Variable Newsreader (400–600) so body text can sit slightly heavier than 400 —
+   thin serif strokes at 400 read as low-contrast even on a high-contrast palette. */
+@import url("https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400..600&display=swap");
+
+/* ----------------------------------------------------------------------------
+   1. Palette — warm "ink on paper". OKLCH-adjacent tones, no purple gradients.
+   ---------------------------------------------------------------------------- */
+
+:root {
+  --ds-paper:        #faf9f5;  /* page background (ivory)            */
+  --ds-paper-raised: #f3f0e7;  /* code / quote / table surfaces      */
+  --ds-paper-sunken: #ede9dd;  /* hovers, zebra rows                 */
+  --ds-ink:          #211e1a;  /* primary text (warm near-black)     */
+  --ds-ink-soft:     #4a443b;  /* secondary text (≈9:1 on paper)     */
+  --ds-ink-faint:    #6f6759;  /* captions, metadata (≈5:1, AA)      */
+  --ds-line:         #e2ddd0;  /* hairline borders                   */
+  --ds-clay:         #b8553a;  /* accent — terracotta                */
+  --ds-clay-deep:    #9c4128;  /* accent on hover                    */
+  --ds-clay-wash:    #f4e7df;  /* tinted accent background           */
+
+  /* Material font hooks (theme.font sets the family names) */
+  --md-text-font: "Newsreader";
+  --md-code-font: "JetBrains Mono";
+}
+
+/* ---- Light scheme -------------------------------------------------------- */
+[data-md-color-scheme="default"] {
+  --md-default-bg-color:        var(--ds-paper);
+  --md-default-fg-color:        var(--ds-ink);
+  --md-default-fg-color--light: var(--ds-ink-soft);
+  --md-default-fg-color--lighter: var(--ds-ink-faint);
+
+  --md-primary-fg-color:        var(--ds-paper);   /* header bar = paper  */
+  --md-primary-bg-color:        var(--ds-ink);     /* header text = ink   */
+  --md-primary-bg-color--light: var(--ds-ink-soft);
+
+  --md-accent-fg-color:         var(--ds-clay-deep);
+  --md-typeset-a-color:         var(--ds-clay);
+
+  --md-code-bg-color:           var(--ds-paper-raised);
+  --md-code-fg-color:           #4a3f36;
+
+  --md-typeset-table-color:     var(--ds-line);
+  --md-footer-bg-color:         #efece3;
+  --md-footer-fg-color:         var(--ds-ink);
+}
+
+/* ---- Dark scheme — warm charcoal, never pure black ----------------------- */
+[data-md-color-scheme="slate"] {
+  --ds-paper:        #1f1d1a;
+  --ds-paper-raised: #2a2723;
+  --ds-paper-sunken: #322e29;
+  --ds-ink:          #efeae0;
+  --ds-ink-soft:     #c6beb0;
+  --ds-ink-faint:    #9c9483;
+  --ds-line:         #3a352e;
+  --ds-clay:         #e0916b;
+  --ds-clay-deep:    #eea884;
+  --ds-clay-wash:    #34291f;
+
+  --md-default-bg-color:        var(--ds-paper);
+  --md-default-fg-color:        var(--ds-ink);
+  --md-default-fg-color--light: var(--ds-ink-soft);
+  --md-default-fg-color--lighter: var(--ds-ink-faint);
+
+  --md-primary-fg-color:        #211f1b;
+  --md-primary-bg-color:        var(--ds-ink);
+  --md-accent-fg-color:         var(--ds-clay-deep);
+  --md-typeset-a-color:         var(--ds-clay);
+
+  --md-code-bg-color:           var(--ds-paper-raised);
+  --md-code-fg-color:           #d8cfc0;
+  --md-footer-bg-color:         #1a1815;
+}
+
+/* ----------------------------------------------------------------------------
+   2. Typography — display serif headings, editorial body.
+   ---------------------------------------------------------------------------- */
+
+.md-typeset {
+  font-feature-settings: "kern", "liga", "onum";  /* old-style numerals in prose */
+  font-size: 0.82rem;
+  line-height: 1.72;
+  font-weight: 450;                /* crisper serif strokes → stronger perceived contrast */
+  color: var(--ds-ink);
+  -webkit-font-smoothing: auto;    /* don't thin the strokes on WebKit */
+}
+
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3,
+.md-typeset h4 {
+  font-family: "Fraunces", "Newsreader", Georgia, serif;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ds-ink);
+}
+
+.md-typeset h1 {
+  font-size: 2.0rem;
+  line-height: 1.15;
+  font-weight: 600;
+  margin: 0 0 0.6em;
+}
+
+.md-typeset h2 {
+  font-size: 1.42rem;
+  line-height: 1.2;
+  margin-top: 2.2em;
+  padding-bottom: 0.25em;
+  border-bottom: 1px solid var(--ds-line);   /* hairline section rule */
+}
+
+.md-typeset h3 { font-size: 1.12rem; margin-top: 1.8em; }
+
+/* Lead paragraph: the first paragraph after the page title reads as a standfirst. */
+.md-typeset h1 + p {
+  font-size: 1.04rem;
+  line-height: 1.6;
+  color: var(--ds-ink-soft);
+}
+
+/* Tabular figures inside tables so columns of numbers align. */
+.md-typeset table:not([class]) { font-feature-settings: "kern", "liga", "tnum"; }
+
+/* Code reads like a code editor: a robust IDE monospace stack that prefers
+   system editor fonts so it works without network fonts. Overrides theme.font
+   .code (JetBrains Mono) from mkdocs.yml; colors/treatment unchanged (see §5). */
+:root {
+  --md-code-font: "JetBrains Mono", "Cascadia Code", "SF Mono", "Fira Code",
+                  Consolas, "Roboto Mono", ui-monospace, monospace;
+}
+.md-typeset code,
+.md-typeset pre,
+.md-typeset .highlight code,
+.md-typeset pre code { font-family: var(--md-code-font); }
+
+/* ----------------------------------------------------------------------------
+   3. Links — editorial underline that thickens on hover (no jarring color flip).
+   ---------------------------------------------------------------------------- */
+
+.md-typeset a {
+  text-decoration: underline;
+  text-decoration-color: var(--ds-line);
+  text-underline-offset: 0.18em;
+  text-decoration-thickness: 1px;
+  transition: text-decoration-color 120ms ease, color 120ms ease;
+}
+.md-typeset a:hover {
+  color: var(--ds-clay-deep);
+  text-decoration-color: var(--ds-clay);
+}
+
+/* ----------------------------------------------------------------------------
+   4. Header & navigation — airy "paper" chrome, layered collapsible tree.
+   ---------------------------------------------------------------------------- */
+
+.md-header {
+  box-shadow: 0 1px 0 var(--ds-line);
+  backdrop-filter: saturate(1.1);
+}
+.md-header__title { font-family: "Fraunces", serif; font-weight: 600; }
+
+.md-tabs { border-bottom: 1px solid var(--ds-line); }
+
+/* Sidebar nav: quieter, with a clay marker on the active leaf. */
+.md-nav { font-size: 0.72rem; }
+.md-nav__title { color: var(--ds-ink-faint); font-weight: 600; letter-spacing: 0.02em; }
+.md-nav__link--active,
+.md-nav__link--active:focus,
+.md-nav__link--active:hover {
+  color: var(--ds-clay-deep);
+  font-weight: 600;
+}
+.md-nav__item .md-nav__link:hover { color: var(--ds-clay-deep); }
+
+/* ----------------------------------------------------------------------------
+   5. Code — tinted "paper-raised" surface, hairline border, modest rounding.
+   ---------------------------------------------------------------------------- */
+
+.md-typeset code {
+  background: var(--ds-clay-wash);
+  border-radius: 3px;
+  padding: 0.1em 0.35em;
+  font-size: 0.84em;
+}
+.md-typeset pre > code {
+  background: none;
+  padding: 0;
+}
+.md-typeset pre {
+  border: 1px solid var(--ds-line);
+  border-radius: 6px;
+}
+.highlight { font-size: 0.78rem; }
+
+/* ----------------------------------------------------------------------------
+   6. Tables — magazine ledger: no heavy grid, hairlines + subtle header band.
+   ---------------------------------------------------------------------------- */
+
+.md-typeset table:not([class]) {
+  border: 1px solid var(--ds-line);
+  border-radius: 6px;
+  overflow: hidden;
+  font-size: 0.76rem;
+}
+.md-typeset table:not([class]) th {
+  background: var(--ds-paper-raised);
+  font-family: "Newsreader", serif;
+  font-weight: 600;
+  border-bottom: 1px solid var(--ds-line);
+}
+.md-typeset table:not([class]) td { border-top: 1px solid var(--ds-line); }
+.md-typeset table:not([class]) tr:hover { background: var(--ds-paper-sunken); }
+
+/* ----------------------------------------------------------------------------
+   7. Blockquotes — used heavily for "> Notation:" headers. Make them a margin note.
+   ---------------------------------------------------------------------------- */
+
+.md-typeset blockquote {
+  border-left: 2px solid var(--ds-clay);
+  color: var(--ds-ink-soft);
+  background: var(--ds-paper-raised);
+  border-radius: 0 6px 6px 0;
+  padding: 0.4rem 0.9rem;
+}
+
+/* ----------------------------------------------------------------------------
+   8. Math (KaTeX) — let wide display equations scroll instead of overflowing.
+   ---------------------------------------------------------------------------- */
+
+.md-typeset .arithmatex { overflow-x: auto; overflow-y: hidden; }
+.md-typeset .katex-display {
+  margin: 1.1em 0;
+  padding: 0.2em 0;
+}
+.md-typeset .katex { font-size: 1.04em; }
+
+/* ----------------------------------------------------------------------------
+   9. Content measure & rules — keep prose to a readable column.
+   ---------------------------------------------------------------------------- */
+
+.md-grid { max-width: 64rem; }                 /* a touch wider than default */
+.md-typeset hr {
+  border-bottom: 1px solid var(--ds-line);
+  margin: 2.2em 0;
+}
+
+/* Selection in the accent wash. */
+::selection { background: var(--ds-clay-wash); }
+
+/* =============================================================================
+   10. Algorithm-page anatomy — the signature layout for the recurring
+       components of every method page. Pure CSS over the standard rendered
+       HTML; per-page family + the metadata table + Result run-ins are tagged
+       at runtime by docs/javascripts/paradigm.js (see that file for the why).
+   ========================================================================== */
+
+/* ---- 10.0 Paradigm family palette ---------------------------------------
+   The taxonomy splits every method into two families. Each gets its own accent:
+     Policy Gradient   → terracotta  (the house clay)
+     Direct Preference → muted teal-green (a complementary earth tone, NOT
+                         blue/purple — it sits beside clay like verdigris on
+                         terracotta).
+   --ds-family / --ds-family-* are the live hooks every component below reads.
+   They default to clay; paradigm.js sets data-paradigm on .md-content__inner
+   to switch them. To pin a family by hand (no JS), add the attribute to the
+   article, e.g. <article class="md-content__inner" data-paradigm="...">.
+   --------------------------------------------------------------------------- */
+
+:root {
+  --ds-fam-pg:        #b8553a;  /* Policy Gradient — terracotta            */
+  --ds-fam-pg-deep:   #9c4128;
+  --ds-fam-pg-wash:   #f4e7df;
+  --ds-fam-dp:        #4f7d6e;  /* Direct Preference — muted teal-green    */
+  --ds-fam-dp-deep:   #3c6253;
+  --ds-fam-dp-wash:   #e6ede9;
+}
+[data-md-color-scheme="slate"] {
+  --ds-fam-pg:        #e0916b;
+  --ds-fam-pg-deep:   #eea884;
+  --ds-fam-pg-wash:   #34291f;
+  --ds-fam-dp:        #7db3a1;
+  --ds-fam-dp-deep:   #96c7b6;
+  --ds-fam-dp-wash:   #243029;
+}
+
+/* Default family = the house clay, so pages render coherently even before
+   (or without) JS classification. */
+.md-content__inner {
+  --ds-family:      var(--ds-fam-pg);
+  --ds-family-deep: var(--ds-fam-pg-deep);
+  --ds-family-wash: var(--ds-fam-pg-wash);
+}
+.md-content__inner[data-paradigm="policy-gradient"] {
+  --ds-family:      var(--ds-fam-pg);
+  --ds-family-deep: var(--ds-fam-pg-deep);
+  --ds-family-wash: var(--ds-fam-pg-wash);
+}
+.md-content__inner[data-paradigm="direct-preference"] {
+  --ds-family:      var(--ds-fam-dp);
+  --ds-family-deep: var(--ds-fam-dp-deep);
+  --ds-family-wash: var(--ds-fam-dp-wash);
+}
+
+/* A whisper-thin family rail down the left of tagged pages — the only
+   page-wide cue, so the family registers before you read a word. */
+@media (min-width: 60em) {
+  .md-content__inner[data-paradigm] {
+    border-left: 2px solid var(--ds-family);
+    padding-left: 1.6rem;
+    margin-left: -1.8rem;
+  }
+}
+
+/* ---- 10.1 Metadata spec-sheet header -------------------------------------
+   The first table on an algorithm page (Field | Value) becomes an index-card
+   header, visually distinct from ordinary content tables. paradigm.js tags it
+   [data-meta-table] (a positional :first-of-type rule would misfire on the
+   reference pages whose first table is a comparison grid). The :not([class])
+   base styling from §6 still applies; these rules override the card chrome.
+   --------------------------------------------------------------------------- */
+
+.md-typeset table[data-meta-table] {
+  border: 1px solid var(--ds-line);
+  border-top: 2px solid var(--ds-family);   /* family-tinted cap */
+  border-radius: 8px;
+  font-size: 0.72rem;
+  margin-top: 1.4em;
+  background: linear-gradient(var(--ds-paper-raised), var(--ds-paper-raised))
+              padding-box;
+}
+.md-typeset table[data-meta-table] thead { display: none; }  /* "Field/Value" is noise */
+
+.md-typeset table[data-meta-table] th,
+.md-typeset table[data-meta-table] td {
+  padding: 0.34rem 0.95rem;
+  border-top: 1px solid var(--ds-line);
+  vertical-align: baseline;
+}
+.md-typeset table[data-meta-table] tbody tr:first-child td {
+  border-top: 0;
+}
+.md-typeset table[data-meta-table] tr:hover { background: transparent; }
+
+/* Field labels: small-caps, letterspaced, faint — index-card rhythm. */
+.md-typeset table[data-meta-table] td:first-child,
+.md-typeset table[data-meta-table] td:first-child strong {
+  font-family: "Newsreader", serif;
+  font-weight: 600;
+  font-variant: small-caps;
+  font-feature-settings: "smcp", "c2sc";
+  letter-spacing: 0.06em;
+  color: var(--ds-ink-faint);
+  width: 9.5rem;
+  white-space: nowrap;
+}
+.md-typeset table[data-meta-table] td:last-child {
+  color: var(--ds-ink);
+  font-size: 0.78rem;
+}
+
+/* Paradigm value: the family word reads as a small badge. */
+.md-typeset table[data-meta-table] td:last-child strong:first-child {
+  color: var(--ds-family-deep);
+  font-variant: small-caps;
+  font-feature-settings: "smcp";
+  letter-spacing: 0.04em;
+}
+
+/* arXiv / GitHub links sit prominently — the two things a reader clicks. */
+.md-typeset table[data-meta-table] td:last-child a {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.92em;
+  text-decoration-color: var(--ds-family);
+  word-break: break-all;
+}
+.md-typeset table[data-meta-table] td:last-child a:hover {
+  color: var(--ds-family-deep);
+}
+
+/* ---- 10.2 Editorial run-in labels ---------------------------------------
+   Leading bold labels (Issue / Idea / Why this works / Result) become
+   small-caps, letterspaced, family-colored run-ins so the section reads like a
+   lab notebook. Scoped to <strong> that is genuinely the paragraph's first
+   child, so ordinary mid-sentence bold is untouched. (Material's permalink
+   icons are <a> at the end of headings, never the first child of a <p>.)
+   --------------------------------------------------------------------------- */
+
+.md-content__inner p > strong:first-child {
+  font-variant: small-caps;
+  font-feature-settings: "smcp";
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  color: var(--ds-family-deep);
+}
+
+/* Result — the empirical payoff (tagged by paradigm.js). A solid run-in chip
+   plus a faint family wash behind the whole paragraph. */
+.md-content__inner p[data-runin="result"] {
+  background: var(--ds-family-wash);
+  border-left: 2px solid var(--ds-family);
+  border-radius: 0 6px 6px 0;
+  padding: 0.5rem 0.9rem;
+  margin-left: -0.9rem;
+}
+.md-content__inner p[data-runin="result"] > strong:first-child {
+  color: var(--ds-family-deep);
+}
+
+/* ---- 10.3 Code: blueprint vs implementation ------------------------------
+   pymdownx wraps BOTH the plain ## Algorithm block and the python reference
+   block in <div class="highlight">. The only structural difference: the python
+   block carries syntax-highlight token <span class="…"> inside <code>; the
+   plain block has none. :has() lets CSS branch on exactly that.
+
+   Pseudocode (no token spans)  → "blueprint": tinted paper, dashed rule.
+   Python    (token spans)      → "implementation": inked surface, solid rule.
+   --------------------------------------------------------------------------- */
+
+/* Blueprint — the design, not the build. */
+.md-typeset .highlight:not(:has(code span[class])) {
+  position: relative;
+}
+.md-typeset .highlight:not(:has(code span[class])) > pre {
+  background: var(--ds-paper-raised);
+  border: 1px dashed var(--ds-line);
+  border-left: 2px solid var(--ds-family);
+}
+.md-typeset .highlight:not(:has(code span[class])) > pre > code {
+  color: var(--ds-ink-soft);
+}
+
+/* Implementation — real code, firmer surface, family-tinted edge. */
+.md-typeset .highlight:has(code span[class]) > pre {
+  background: var(--ds-paper-raised);
+  border: 1px solid var(--ds-line);
+  border-left: 2px solid var(--ds-family);
+}
+
+/* Tiny corner tags so the two registers are legible at a glance. Drawn on the
+   <pre> via ::before; pointer-events off so copy/select is unaffected. */
+.md-typeset .highlight > pre::before {
+  position: absolute;
+  top: 0;
+  right: 0;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.5rem;
+  color: var(--ds-ink-faint);
+  background: var(--ds-paper-sunken);
+  border-radius: 0 6px 0 6px;
+  pointer-events: none;
+}
+.md-typeset .highlight:not(:has(code span[class])) > pre {
+  position: relative;
+}
+.md-typeset .highlight:has(code span[class]) > pre {
+  position: relative;
+}
+.md-typeset .highlight:not(:has(code span[class])) > pre::before {
+  content: "pseudocode";
+}
+.md-typeset .highlight:has(code span[class]) > pre::before {
+  content: "python";
+}
+/* Keep the copy button clear of the corner tag. */
+.md-typeset .highlight .md-clipboard { z-index: 1; }
+
+/* ---- 10.4 Display math — the boxed Training Objective as a focal block ----
+   pymdownx.arithmatex renders $$\boxed{…}$$ as a KaTeX \boxed. We let the whole
+   equation sit centered with breathing room; long equations still scroll
+   (see §8). The .katex-display nested in an .arithmatex div is always a display
+   equation.
+
+   The focal "boxed" treatment is applied to the CONTAINER, not to KaTeX's
+   .fbox span. KaTeX wraps .fbox in .stretchy (overflow:hidden, width:100%, with
+   an explicit inline height); padding/border-radius/background on .fbox inflates
+   that clipped box so the equation disappears. Hence the frame (wash + padding +
+   rounded border) goes on div.arithmatex:has(.fbox), and .fbox only loses its
+   own hairline — never pad .fbox because .stretchy clips it.
+   --------------------------------------------------------------------------- */
+
+.md-typeset div.arithmatex:has(.katex-display) {
+  margin: 1.6em 0;
+  text-align: center;
+}
+
+/* The focal frame lives on the CONTAINER, never on the \boxed span itself.
+   KaTeX renders \boxed as span.fbox wrapped in span.stretchy, which is
+   display:block; overflow:hidden; width:100% with an explicit inline height
+   sized to the content. Any padding / border-radius / background on .fbox
+   inflates that fixed, clipped box and pushes the equation out of view — every
+   boxed objective then renders EMPTY. So we only recolor (and drop) KaTeX's own
+   hairline on .fbox, and move the wash + padding + rounded border to the
+   arithmatex div that contains an .fbox. :has(.fbox) means only focal (boxed)
+   equations get the treatment; ordinary display equations stay plain. */
+.md-typeset .katex .fbox {
+  border: 0;   /* visible frame is on the container; never pad/clip .fbox */
+}
+
+.md-typeset div.arithmatex:has(.fbox) {
+  background: var(--ds-family-wash);
+  border: 1px solid var(--ds-family);
+  border-radius: 6px;
+  padding: 0.9em 1.1em;
+}
+
+/* ---- 10.5 Motion & a11y --------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .md-typeset a,
+  .md-content__inner p[data-runin="result"],
+  .md-typeset .highlight > pre { transition: none; }
+}
